@@ -1,0 +1,16 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B1120"/>
+      <stop offset="1" stop-color="#070B16"/>
+    </linearGradient>
+    <linearGradient id="cloud" x1="16" y1="22" x2="48" y2="46" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67E8F9"/>
+      <stop offset="1" stop-color="#0891B2"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#bg)"/>
+  <rect x="0.5" y="0.5" width="63" height="63" rx="15.5" stroke="rgba(255,255,255,0.12)"/>
+  <path d="M22 44C17.5817 44 14 40.4183 14 36C14 31.5817 17.5817 28 22 28C22.4786 28 22.9463 28.0462 23.3992 28.1347C24.7574 22.5293 29.8326 18.5 36 18.5C42.0203 18.5 47.7114 22.5903 49.1895 28.1566C49.7855 28.0538 50.3962 28 51 28C55.4183 28 59 31.5817 59 36C59 40.4183 55.4183 44 51 44H22Z" fill="url(#cloud)"/>
+  <path d="M22 44C17.5817 44 14 40.4183 14 36C14 31.5817 17.5817 28 22 28C22.4786 28 22.9463 28.0462 23.3992 28.1347C24.7574 22.5293 29.8326 18.5 36 18.5C42.0203 18.5 47.7114 22.5903 49.1895 28.1566C49.7855 28.0538 50.3962 28 51 28C55.4183 28 59 31.5817 59 36C59 40.4183 55.4183 44 51 44H22Z" fill="rgba(255,255,255,0.15)" style="mix-blend-mode:overlay"/>
+</svg>
