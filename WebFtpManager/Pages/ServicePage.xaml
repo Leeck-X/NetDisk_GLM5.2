@@ -1,0 +1,102 @@
+<Page x:Class="WebFtpManager.Pages.ServicePage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      Background="#F5F7FB"
+      Loaded="Page_Loaded">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24">
+        <StackPanel MaxWidth="960">
+
+            <!-- 当前状态卡片 -->
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <Grid Margin="0,0,0,16">
+                        <TextBlock Text="服务状态" FontSize="16" FontWeight="Bold" Foreground="#111827"/>
+                        <Button x:Name="RefreshBtn" Content="刷新" HorizontalAlignment="Right"
+                                Style="{StaticResource GhostButton}" Padding="12,6" Click="Refresh_Click"/>
+                    </Grid>
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Ellipse x:Name="StatusDot" Grid.Column="0" Width="14" Height="14" Fill="#9CA3AF" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="StatusText" Grid.Column="1" Text="检测中..." FontSize="22" FontWeight="Bold" Foreground="#111827" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="StatusTag" Grid.Column="2" Text="UNKNOWN" FontSize="11" Foreground="#6B7280" VerticalAlignment="Center"/>
+                    </Grid>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                            <TextBlock Text="启动类型" FontSize="11" Foreground="#6B7280"/>
+                            <TextBlock x:Name="StartTypeText" Text="-" FontSize="14" Foreground="#111827" Margin="0,4,0,0"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="8,0">
+                            <TextBlock Text="进程 PID" FontSize="11" Foreground="#6B7280"/>
+                            <TextBlock x:Name="PidText" Text="-" FontSize="14" Foreground="#111827" Margin="0,4,0,0"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Margin="8,0">
+                            <TextBlock Text="Web 端口" FontSize="11" Foreground="#6B7280"/>
+                            <TextBlock x:Name="PortText" Text="-" FontSize="14" Foreground="#111827" Margin="0,4,0,0"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="3" Margin="8,0,0,0">
+                            <TextBlock Text="API 健康" FontSize="11" Foreground="#6B7280"/>
+                            <TextBlock x:Name="HealthText" Text="-" FontSize="14" Foreground="#111827" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- 控制按钮 -->
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <TextBlock Text="服务控制" FontSize="16" FontWeight="Bold" Foreground="#111827" Margin="0,0,0,12"/>
+                    <WrapPanel>
+                        <Button x:Name="InstallBtn"   Content="安装服务"   Style="{StaticResource PrimaryButton}" Margin="0,0,8,8" Click="Install_Click"/>
+                        <Button x:Name="UninstallBtn" Content="卸载服务"   Style="{StaticResource DangerButton}"  Margin="0,0,8,8" Click="Uninstall_Click"/>
+                        <Button x:Name="StartBtn"     Content="启动"       Style="{StaticResource GhostButton}"    Margin="0,0,8,8" Click="Start_Click"/>
+                        <Button x:Name="StopBtn"      Content="停止"       Style="{StaticResource GhostButton}"    Margin="0,0,8,8" Click="Stop_Click"/>
+                        <Button x:Name="RestartBtn"   Content="重启"       Style="{StaticResource GhostButton}"    Margin="0,0,8,8" Click="Restart_Click"/>
+                    </WrapPanel>
+                    <CheckBox x:Name="AutoStartCb" Content="开机自启动" Margin="0,8,0,0" VerticalContentAlignment="Center"
+                              Checked="AutoStart_Changed" Unchecked="AutoStart_Changed"/>
+                </StackPanel>
+            </Border>
+
+            <!-- 快捷入口 -->
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <TextBlock Text="快速访问" FontSize="16" FontWeight="Bold" Foreground="#111827" Margin="0,0,0,12"/>
+                    <WrapPanel>
+                        <Button Content="打开 Web" Style="{StaticResource PrimaryButton}" Margin="0,0,8,8" Click="OpenWeb_Click"/>
+                        <Button Content="打开项目目录" Style="{StaticResource GhostButton}" Margin="0,0,8,8" Click="OpenRoot_Click"/>
+                        <Button Content="打开日志目录" Style="{StaticResource GhostButton}" Margin="0,0,8,8" Click="OpenLogs_Click"/>
+                        <Button Content="重新构建前端" Style="{StaticResource GhostButton}" Margin="0,0,8,8" Click="Build_Click"/>
+                    </WrapPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- 输出 -->
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <Grid Margin="0,0,0,8">
+                        <TextBlock Text="命令输出" FontSize="14" FontWeight="Bold" Foreground="#111827"/>
+                        <Button x:Name="ClearOutputBtn" Content="清空" HorizontalAlignment="Right"
+                                Style="{StaticResource GhostButton}" Padding="10,4" Click="ClearOutput_Click"/>
+                    </Grid>
+                    <Border Background="#1E293B" CornerRadius="6" Padding="10" MaxHeight="260">
+                        <TextBox x:Name="OutputBox" Background="Transparent" BorderThickness="0" Foreground="#E2E8F0"
+                                 FontFamily="Consolas" FontSize="12" IsReadOnly="True"
+                                 VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"
+                                 Text="等待操作..."/>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

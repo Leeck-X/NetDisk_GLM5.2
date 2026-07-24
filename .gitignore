@@ -33,3 +33,12 @@ logs/
 
 # Trae IDE metadata
 .trae/
+
+# .NET / WebFtpManager 编译产物
+bin/
+obj/
+*.user
+*.suo
+publish/
+Release/
+Debug/

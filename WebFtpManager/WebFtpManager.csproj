@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <!-- 关闭隐式 using，避免 WPF + WinForms 同时启用导致的命名空间冲突 -->
+    <ImplicitUsings>disable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>WebFtpManager</RootNamespace>
+    <AssemblyName>WebFtpManager</AssemblyName>
+    <Version>1.0.0</Version>
+    <Company>WebFtp</Company>
+    <Product>WebFtp Manager</Product>
+    <Description>WebFtp 服务管理面板</Description>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>false</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- 加速构建：禁用 URL 下载等无关功能 -->
+    <EnableDefaultApplicationDefinition>true</EnableDefaultApplicationDefinition>
+  </PropertyGroup>
+
+</Project>

@@ -16,6 +16,8 @@ import { fileURLToPath } from 'url'
 import rateLimit from 'express-rate-limit'
 
 import { getDb, ROOT_DIR } from './db.js'
+import { writeAccess, writeError } from './logger.js'
+import { recordRequest } from './stats.js'
 import authRoutes from './routes/auth.js'
 import fileRoutes from './routes/files.js'
 import shareRoutes from './routes/shares.js'
@@ -44,6 +46,32 @@ app.use(express.json({ limit: '2mb' }))
 app.use(express.urlencoded({ extended: true, limit: '2mb' }))
 app.use(cookieParser())
 app.use(morgan('tiny'))
+
+/** 请求统计 + 文件日志中间件 */
+app.use((req, _res, next) => {
+  const start = Date.now()
+  const bytesIn = Number(req.headers['content-length'] ?? 0)
+  const res = _res as express.Response & { __sent?: boolean }
+  const finish = () => {
+    if (res.__sent) return
+    res.__sent = true
+    const duration = Date.now() - start
+    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || ''
+    const line = `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} ${res.statusCode} ${duration}ms ${ip} "${req.headers['user-agent'] ?? ''}"`
+    writeAccess(line)
+    recordRequest({
+      method: req.method,
+      path: req.originalUrl,
+      status: res.statusCode,
+      durationMs: duration,
+      bytesIn,
+      bytesOut: Number(res.getHeader('Content-Length') ?? 0),
+    })
+  }
+  res.on('finish', finish)
+  res.on('close', finish)
+  next()
+})
 
 // 登录接口限流
 const loginLimiter = rateLimit({
@@ -109,8 +137,9 @@ if (fs.existsSync(distDir)) {
 /**
  * 错误处理中间件
  */
-app.use((error: Error, _req: Request, res: Response, _next: NextFunction) => {
+app.use((error: Error, req: Request, res: Response, _next: NextFunction) => {
   console.error('[WebFtp Error]', error)
+  writeError(error, `${req.method} ${req.originalUrl}`)
   // multer 文件超限
   if (error.message && error.message.includes('File too large')) {
     res.status(413).json({ code: 1, message: '分片大小超过 10MB 限制', data: null })

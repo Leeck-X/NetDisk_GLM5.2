@@ -1,10 +1,14 @@
 import { Router } from 'express'
 import { nanoid } from 'nanoid'
-import { getDb, STORAGE_DIR, getSuperAdminId, isSuperAdmin } from '../db.js'
+import { getDb, STORAGE_DIR, getSuperAdminId, isSuperAdmin, ROOT_DIR } from '../db.js'
 import { ok, fail, hashPassword, formatBytes } from '../utils.js'
+import { readLogTail, LOGS_DIR } from '../logger.js'
+import { getStatsSummary, START_TIME } from '../stats.js'
 import type { AuthRequest } from '../middleware.js'
 import { authRequired, adminOnly } from '../middleware.js'
 import fs from 'fs'
+import path from 'path'
+import os from 'os'
 
 const router = Router()
 router.use(authRequired, adminOnly)
@@ -241,6 +245,64 @@ router.patch('/config', (req: AuthRequest, res) => {
   })
   tx()
   ok(res, null, '配置已保存')
+})
+
+/** 请求统计 */
+router.get('/request-stats', (req: AuthRequest, res) => {
+  ok(res, getStatsSummary())
+})
+
+/** 系统信息 */
+router.get('/system-info', (req: AuthRequest, res) => {
+  const port = process.env.PORT || '3000'
+  const host = process.env.HOST || '0.0.0.0'
+  const dbPath = path.join(ROOT_DIR, 'data', 'webftp.db')
+  let dbSize = 0
+  try { dbSize = fs.statSync(dbPath).size } catch { /* ignore */ }
+  let storageSize = 0
+  try {
+    for (const entry of fs.readdirSync(STORAGE_DIR, { withFileTypes: true })) {
+      if (entry.isFile()) {
+        storageSize += fs.statSync(path.join(STORAGE_DIR, entry.name)).size
+      }
+    }
+  } catch { /* ignore */ }
+  ok(res, {
+    version: '1.0.0',
+    nodeVersion: process.version,
+    platform: `${os.type()} ${os.release()} ${os.arch()}`,
+    hostname: os.hostname(),
+    cpus: os.cpus().length,
+    totalMem: os.totalmem(),
+    freeMem: os.freemem(),
+    uptime: Date.now() - START_TIME,
+    processUptime: process.uptime(),
+    port,
+    host,
+    rootDir: ROOT_DIR,
+    dataDir: path.join(ROOT_DIR, 'data'),
+    storageDir: STORAGE_DIR,
+    logsDir: LOGS_DIR,
+    dbPath,
+    dbSize,
+    storageSize,
+    storageSizeHuman: formatBytes(storageSize),
+    dbSizeHuman: formatBytes(dbSize),
+    pid: process.pid,
+    startTime: new Date(START_TIME).toISOString(),
+  })
+})
+
+/** 读取日志尾部 */
+router.get('/logs', (req: AuthRequest, res) => {
+  const type = (req.query.type as string) || 'access'
+  const lines = Math.min(Number(req.query.lines ?? 500), 5000)
+  const valid = ['access', 'error', 'stats']
+  if (!valid.includes(type)) {
+    fail(res, '日志类型无效')
+    return
+  }
+  ok(res, { type, content: readLogTail(type as 'access' | 'error' | 'stats', lines) })
 })
 
 export default router
