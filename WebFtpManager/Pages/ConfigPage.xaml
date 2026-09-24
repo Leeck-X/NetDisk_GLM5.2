@@ -8,6 +8,33 @@
             <Border Style="{StaticResource Card}">
                 <StackPanel>
                     <Grid Margin="0,0,0,12">
+                        <TextBlock Text="管理面板设置" FontSize="16" FontWeight="Bold" Foreground="#111827"/>
+                        <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                            <Button x:Name="SrvTestBtn" Content="测试连接" Style="{StaticResource GhostButton}" Padding="10,4" Margin="0,0,8,0" Click="SrvTest_Click"/>
+                            <Button x:Name="SrvSaveBtn" Content="保存" Style="{StaticResource PrimaryButton}" Padding="14,6" Click="SrvSave_Click"/>
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock Text="管理面板连接的后端地址。留空表示自动使用本机 .env 中的 PORT（http://127.0.0.1:端口）；也可填写远程部署地址，例如 https://ninging.me:8443 。"
+                               FontSize="11" Foreground="#6B7280" Margin="0,0,0,12" TextWrapping="Wrap"/>
+
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="服务器地址" VerticalAlignment="Center" Foreground="#4338CA"/>
+                        <TextBox Grid.Column="1" x:Name="ServerUrlBox" Padding="8,6" FontFamily="Consolas"/>
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                        <Button x:Name="SrvDefaultBtn" Content="恢复本机默认" Style="{StaticResource GhostButton}" Padding="10,4" Click="SrvDefault_Click"/>
+                        <TextBlock x:Name="SrvHint" VerticalAlignment="Center" FontSize="11" Foreground="#6B7280" Margin="12,0,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <Grid Margin="0,0,0,12">
                         <TextBlock Text="环境变量配置（.env）" FontSize="16" FontWeight="Bold" Foreground="#111827"/>
                         <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
                             <Button x:Name="ReloadBtn" Content="重新加载" Style="{StaticResource GhostButton}" Padding="10,4" Margin="0,0,8,0" Click="Reload_Click"/>
@@ -39,6 +66,89 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="JWT_SECRET" VerticalAlignment="Center" FontFamily="Consolas" Foreground="#4338CA"/>
                         <TextBox Grid.Column="1" x:Name="JwtBox" Padding="8,6" FontFamily="Consolas"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <Grid Margin="0,0,0,12">
+                        <TextBlock Text="运行时配置（保存后立即生效，无需重启）" FontSize="16" FontWeight="Bold" Foreground="#111827"/>
+                        <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                            <Button x:Name="RtReloadBtn" Content="重新加载" Style="{StaticResource GhostButton}" Padding="10,4" Margin="0,0,8,0" Click="RtReload_Click"/>
+                            <Button x:Name="RtSaveBtn" Content="保存" Style="{StaticResource PrimaryButton}" Padding="14,6" Click="RtSave_Click"/>
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="RtHint" Text="需要管理员身份。请在「用户」页登录并勾选“记住登录”，以便此页自动登录。"
+                               FontSize="11" Foreground="#6B7280" Margin="0,0,0,12" TextWrapping="Wrap"/>
+
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="站点名称" VerticalAlignment="Center" Foreground="#4338CA"/>
+                        <TextBox Grid.Column="1" x:Name="SiteNameBox" Padding="8,6"/>
+                    </Grid>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="站点描述" VerticalAlignment="Center" Foreground="#4338CA"/>
+                        <TextBox Grid.Column="1" x:Name="SiteDescBox" Padding="8,6"/>
+                    </Grid>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="新用户默认配额" VerticalAlignment="Center" Foreground="#4338CA"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <TextBox x:Name="DefaultQuotaBox" Width="120" Padding="8,6"/>
+                            <TextBlock Text="GB" VerticalAlignment="Center" Foreground="#6B7280" Margin="8,0,0,0"/>
+                        </StackPanel>
+                    </Grid>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="单文件上传上限" VerticalAlignment="Center" Foreground="#4338CA"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <TextBox x:Name="UploadMaxBox" Width="120" Padding="8,6"/>
+                            <TextBlock Text="MB" VerticalAlignment="Center" Foreground="#6B7280" Margin="8,0,0,0"/>
+                        </StackPanel>
+                    </Grid>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="分享默认有效期" VerticalAlignment="Center" Foreground="#4338CA"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <TextBox x:Name="ShareExpireBox" Width="120" Padding="8,6"/>
+                            <TextBlock Text="天（0 表示永久）" VerticalAlignment="Center" Foreground="#6B7280" Margin="8,0,0,0"/>
+                        </StackPanel>
+                    </Grid>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="回收站保留天数" VerticalAlignment="Center" Foreground="#4338CA"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <TextBox x:Name="TrashDaysBox" Width="120" Padding="8,6"/>
+                            <TextBlock Text="天（0 表示不自动清理）" VerticalAlignment="Center" Foreground="#6B7280" Margin="8,0,0,0"/>
+                        </StackPanel>
+                    </Grid>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="允许用户注册" VerticalAlignment="Center" Foreground="#4338CA"/>
+                        <CheckBox Grid.Column="1" x:Name="AllowRegisterCb" Content="开放注册（关闭后仅管理员可创建账号）" VerticalAlignment="Center" Foreground="#374151"/>
                     </Grid>
                 </StackPanel>
             </Border>

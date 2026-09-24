@@ -20,8 +20,21 @@ public partial class ApiClient : IDisposable
         _http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
     }
 
-    /// <summary>根据 .env 推断服务端口</summary>
+    /// <summary>
+    /// 后端服务地址：优先使用管理面板中设置的服务器地址（支持远程部署），
+    /// 未设置时回退为按 .env 的 PORT 推导的本机地址。
+    /// </summary>
     public static string GetBaseUrl()
+    {
+        var configured = ManagerSettings.Normalize(ManagerSettings.ServerUrl);
+        if (configured.Length > 0) return configured;
+        return $"http://127.0.0.1:{GetPortFromEnv()}";
+    }
+
+    /// <summary>本机默认地址（忽略自定义服务器地址）</summary>
+    public static string GetLocalBaseUrl() => $"http://127.0.0.1:{GetPortFromEnv()}";
+
+    private static string GetPortFromEnv()
     {
         var port = "3000";
         var envFile = App.EnvFile;
@@ -33,13 +46,48 @@ public partial class ApiClient : IDisposable
                 if (m.Success) { port = m.Groups[1].Value; break; }
             }
         }
-        return $"http://127.0.0.1:{port}";
+        return port;
     }
 
     [GeneratedRegex(@"^\s*PORT\s*=\s*(\d+)")]
     private static partial Regex PortRegex();
 
     public void SetToken(string token) => _token = token;
+
+    public void ClearToken() => _token = null;
+
+    public bool HasToken => !string.IsNullOrEmpty(_token);
+
+    /// <summary>探测健康检查接口，用于「测试连接」。baseUrl 为空则用当前生效地址。</summary>
+    public async Task<ApiResponse<object>> PingAsync(string? baseUrl = null)
+    {
+        var root = string.IsNullOrWhiteSpace(baseUrl) ? GetBaseUrl() : ManagerSettings.Normalize(baseUrl);
+        var url = root.TrimEnd('/') + "/api/health";
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        var resp = await _http.SendAsync(req);
+        var text = await resp.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<ApiResponse<object>>(text, JsonOpts) ?? new ApiResponse<object> { Code = -1, Message = "解析失败" };
+    }
+
+    /// <summary>
+    /// 确保已登录：已持有 token 直接返回 true；否则尝试用「记住登录」保存的凭据自动登录。
+    /// 管理类接口（配置/系统信息/垃圾清理）都要求管理员身份，各页面据此复用会话。
+    /// </summary>
+    public async Task<bool> EnsureLoginAsync()
+    {
+        if (!string.IsNullOrEmpty(_token)) return true;
+        var (u, p) = SessionStore.Load();
+        if (string.IsNullOrEmpty(u) || string.IsNullOrEmpty(p)) return false;
+        try
+        {
+            var resp = await LoginAsync<UserData>(u, p);
+            return resp.Success && !string.IsNullOrEmpty(_token);
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     public async Task<ApiResponse<T>> LoginAsync<T>(string username, string password)
     {

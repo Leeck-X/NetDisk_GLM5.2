@@ -13,6 +13,8 @@ public partial class UsersPage : Page
 {
     private readonly ApiClient _api;
     private readonly ObservableCollection<UserRow> _rows = new();
+    /// <summary>后台配置的新用户默认配额（GB），用于新建对话框提示文案</summary>
+    private string _defaultQuotaGb = "";
 
     public UsersPage(ApiClient api)
     {
@@ -108,6 +110,7 @@ public partial class UsersPage : Page
             }
             _rows.Clear();
             foreach (var u in resp.Data ?? new List<UserDto>()) _rows.Add(new UserRow(u));
+            await LoadDefaultQuotaAsync();
         }
         catch (Exception ex)
         {
@@ -115,25 +118,47 @@ public partial class UsersPage : Page
         }
     }
 
+    /// <summary>读取后台配置的新用户默认配额，供新建用户对话框显示</summary>
+    private async Task LoadDefaultQuotaAsync()
+    {
+        try
+        {
+            var resp = await _api.GetAsync<Dictionary<string, string>>("/api/admin/config");
+            if (resp.Success && resp.Data != null && resp.Data.TryGetValue("default_quota_gb", out var v))
+                _defaultQuotaGb = v;
+        }
+        catch { /* 读取失败时退化为不带默认值提示 */ }
+    }
+
     private async void Create_Click(object sender, RoutedEventArgs e)
     {
-        var dlg = new InputDialog("新建用户", "用户名", "密码（至少 6 位）", "配额 (GB，默认 10)", "角色 (admin/user，默认 user)");
+        var hint = string.IsNullOrWhiteSpace(_defaultQuotaGb)
+            ? "配额 (GB，留空用后台默认)"
+            : $"配额 (GB，留空用后台默认 {_defaultQuotaGb})";
+        var dlg = new InputDialog("新建用户", "用户名", "密码（至少 6 位）", hint, "角色 (admin/user，默认 user)");
         if (dlg.ShowDialog() != true) return;
         var values = dlg.Values;
         if (values.Count < 4 || string.IsNullOrEmpty(values[0]) || string.IsNullOrEmpty(values[1]))
         {
             MessageBox.Show("用户名和密码必填"); return;
         }
-        long quota = 1L * 1024 * 1024 * 1024;
-        if (long.TryParse(values[2], out var g)) quota = g * 1024 * 1024 * 1024;
         var role = string.IsNullOrEmpty(values[3]) ? "user" : values[3];
-        var resp = await _api.SendAsync<object>("POST", "/api/admin/users", new
+        var payload = new Dictionary<string, object?>
         {
-            username = values[0],
-            password = values[1],
-            quotaBytes = quota,
-            role,
-        });
+            ["username"] = values[0],
+            ["password"] = values[1],
+            ["role"] = role,
+        };
+        // 留空则不下发 quotaBytes，交由后端按 default_quota_gb 计算
+        if (!string.IsNullOrWhiteSpace(values[2]))
+        {
+            if (!long.TryParse(values[2].Trim(), out var g))
+            {
+                MessageBox.Show("配额需填写数字（GB）"); return;
+            }
+            payload["quotaBytes"] = g * 1024L * 1024 * 1024;
+        }
+        var resp = await _api.SendAsync<object>("POST", "/api/admin/users", payload);
         if (resp.Success) await LoadUsersAsync();
         else MessageBox.Show(resp.Message, "错误", MessageBoxButton.OK, MessageBoxImage.Error);
     }

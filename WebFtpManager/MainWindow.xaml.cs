@@ -47,7 +47,7 @@ public partial class MainWindow : Window
             "TabStats" => new StatsPage(_api),
             "TabUsers" => new UsersPage(_api),
             "TabLogs" => new LogsPage(),
-            "TabConfig" => new ConfigPage(),
+            "TabConfig" => new ConfigPage(_api),
             "TabSystem" => new SystemPage(_api),
             _ => new ServicePage(_svc, _api, this),
         };
