@@ -19,7 +19,7 @@
 - 前端：React 18 + Vite + Tailwind CSS + Zustand + Framer Motion + lucide-react
 - 后端：Node.js + Express + better-sqlite3 + multer + jsonwebtoken + bcryptjs + archiver
 - 数据库：SQLite（单文件，零依赖）
-- 服务管理：node-windows 注册为 Windows 系统服务（原生开机自启）
+- 服务管理：Windows 用 node-windows 注册系统服务；Linux 用 systemd（或 PM2）
 - 管理面板：C# WPF (.NET 8) 单文件 exe（WebFtpManager.exe）
 
 ## 目录结构
@@ -37,6 +37,7 @@ WebFtp/
 ├── publish/          WebFtpManager.exe 发布产物
 ├── ecosystem.config.cjs   PM2 配置（Linux 部署）
 ├── Install-WebFtp.ps1    Windows Server 一键部署脚本
+├── install-webftp.sh     Linux 一键部署脚本
 └── .env              环境变量（从 .env.example 复制创建）
 ```
 
@@ -79,15 +80,15 @@ npm run server:prod    # 启动后端（托管 dist + API），默认端口 3000
 
 访问 `http://localhost:3000`
 
-### 4. PM2 守护（已不推荐用于 Windows Server）
+### 4. PM2 守护（适用于 Linux）
 
-> 在 Windows Server 上推荐使用**原生系统服务**方案，见下一节。
+> Windows Server 推荐使用**原生系统服务**方案（见下一节）；Linux 推荐直接使用 [`install-webftp.sh`](#linux-一键部署) 一键部署，默认走 systemd，也可加 `--pm2` 改用 PM2。
 
 ```bash
-npm install -g pm2 pm2-windows-startup
+npm install -g pm2
 pm2 start ecosystem.config.cjs
 pm2 save
-pm2-startup install    # 注册开机自启
+pm2 startup systemd -u root --hp /root   # 注册开机自启（Linux）
 ```
 
 常用命令：
@@ -169,6 +170,61 @@ sc.exe config WebFtp start= auto       # 开机自启
 sc.exe config WebFtp start= demand     # 手动
 sc.exe delete WebFtp         # 删除服务
 ```
+
+## Linux 一键部署（推荐）
+
+适用于 Ubuntu / Debian / CentOS 等主流发行版。脚本把程序、数据、用户文件统一收敛到 `${WEBPAN_ROOT}`（默认 `/opt/WebPan`）下的 `app` / `data` / `files` 三个子目录，并注册为 systemd 服务（开机自启、崩溃自动重启）。
+
+### 一键部署
+
+把项目放到服务器上（如 `git clone`），然后以 **root** 身份执行：
+
+```bash
+sudo bash install-webftp.sh
+```
+
+脚本会自动完成：
+
+1. 检查 root 权限与 Node.js（≥18）/ npm / tar 依赖
+2. 创建 `${WEBPAN_ROOT}/{app,data,files}`
+3. 同步代码到 `${WEBPAN_ROOT}/app`（若已在 `app/` 内执行则就地部署）
+4. `npm install` 安装依赖（运行期需要 `tsx`，它位于 devDependencies，因此不加 `--omit=dev`）
+5. `npm run build` 构建前端，并校验 `dist/index.html`
+6. 生成 `.env`（`JWT_SECRET` 随机化，并写入 `WEBPAN_ROOT` / `PORT` / `HOST`）
+7. 初始化数据库与默认管理员
+8. 写入 `/etc/systemd/system/webftp.service`，设置开机自启并启动
+
+### 其他用法
+
+```bash
+sudo bash install-webftp.sh --uninstall    # 停止并卸载服务（保留 data/ 与 files/）
+sudo bash install-webftp.sh --build-only   # 仅构建，不注册服务
+sudo bash install-webftp.sh --skip-build   # 跳过构建，直接注册服务
+sudo bash install-webftp.sh --pm2          # 改用 PM2 守护（复用 ecosystem.config.cjs）
+sudo bash install-webftp.sh --webpan-root /opt/WebPan --port 3000 --user root
+```
+
+### 常用参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--webpan-root` | `/opt/WebPan` | 主目录，代码落到其 `app/` 子目录 |
+| `--port` | `3000` | 服务端口（写入 `.env`） |
+| `--user` | `root` | 服务运行用户，会 `chown` 主目录 |
+| `--pm2` | 关 | 用 PM2 而非 systemd；此时端口由 `ecosystem.config.cjs` 决定（3000） |
+
+### 服务管理（systemd）
+
+```bash
+systemctl status webftp      # 查看状态
+systemctl restart webftp     # 重启
+systemctl stop webftp        # 停止
+systemctl start webftp       # 启动
+systemctl disable webftp     # 关闭开机自启
+journalctl -u webftp -f      # 跟踪 stdout / stderr 日志
+```
+
+> 应用自身日志（access / error / stats）写入 `${WEBPAN_ROOT}/data/logs`，即 `journalctl` 之外另有落盘日志。
 
 ## 默认账号
 
