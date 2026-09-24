@@ -4,26 +4,43 @@ import fs from 'fs'
 import { fileURLToPath } from 'url'
 import bcrypt from 'bcryptjs'
 import { nanoid } from 'nanoid'
+import dotenv from 'dotenv'
+
+// 必须在此处加载 .env：ESM 的 import 全部先于模块体求值，
+// 若依赖 app.ts 里的 dotenv.config()，这里读 process.env 永远是 undefined
+dotenv.config()
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-// 项目根目录（api/ 的上一级）
+// 程序目录（api/ 的上一级）
 export const ROOT_DIR = path.resolve(__dirname, '..')
 
-// 数据与存储目录
-export const DATA_DIR = path.join(ROOT_DIR, 'data')
-export const STORAGE_DIR = path.join(ROOT_DIR, 'storage')
+// 主目录：程序(app)、数据(data)、文件(files) 三者的父级
+export const WEBPAN_ROOT = process.env.WEBPAN_ROOT
+  ? path.resolve(process.env.WEBPAN_ROOT)
+  : path.resolve(ROOT_DIR, '..')
+
+// 数据目录（数据库 + 上传分片 + 日志）
+export const DATA_DIR = path.join(WEBPAN_ROOT, 'data')
+// 用户文件目录（按 <userId>/ 分目录存放）
+export const STORAGE_DIR = path.join(WEBPAN_ROOT, 'files')
 export const CHUNKS_DIR = path.join(DATA_DIR, 'chunks')
+export const LOGS_DIR = path.join(DATA_DIR, 'logs')
 export const DB_PATH = path.join(DATA_DIR, 'webftp.db')
 
 let db: Database.Database | null = null
 
 /** 初始化目录结构 */
 export function ensureDirs(): void {
-  for (const dir of [DATA_DIR, STORAGE_DIR, CHUNKS_DIR]) {
-    if (!fs.existsSync(dir)) {
+  for (const dir of [WEBPAN_ROOT, DATA_DIR, STORAGE_DIR, CHUNKS_DIR, LOGS_DIR]) {
+    if (fs.existsSync(dir)) continue
+    try {
       fs.mkdirSync(dir, { recursive: true })
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      console.error(`[WebFtp] 无法创建目录 ${dir}（${code}），请检查运行用户对该路径的写权限`)
+      throw err
     }
   }
 }
@@ -48,7 +65,7 @@ function initSchema(database: Database.Database): void {
       username TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'user',
-      quota_bytes INTEGER NOT NULL DEFAULT 10737418240,
+      quota_bytes INTEGER NOT NULL DEFAULT 1073741824,
       used_bytes INTEGER NOT NULL DEFAULT 0,
       enabled INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))

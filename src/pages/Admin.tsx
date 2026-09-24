@@ -389,7 +389,7 @@ function UsersPage() {
 function CreateUserModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [quotaGB, setQuotaGB] = useState('10')
+  const [quotaGB, setQuotaGB] = useState('1')
   const [role, setRole] = useState('user')
   const [loading, setLoading] = useState(false)
 
@@ -409,7 +409,7 @@ function CreateUserModal({ open, onClose, onCreated }: { open: boolean; onClose:
       toast.success('用户已创建')
       setUsername('')
       setPassword('')
-      setQuotaGB('10')
+      setQuotaGB('1')
       setRole('user')
       onCreated()
       onClose()
@@ -582,7 +582,7 @@ function ConfigPage() {
   const configItems = [
     { key: 'site_name', label: '站点名称', placeholder: 'WebFtp', desc: '显示在浏览器标签与登录页' },
     { key: 'upload_max_size', label: '单文件大小上限（MB）', placeholder: '2048', desc: '单个上传文件大小限制' },
-    { key: 'default_quota_gb', label: '新用户默认配额（GB）', placeholder: '10', desc: '创建新用户时的默认存储配额' },
+    { key: 'default_quota_gb', label: '新用户默认配额（GB）', placeholder: '1', desc: '创建新用户时的默认存储配额' },
     { key: 'share_default_expire_days', label: '分享默认有效期（天）', placeholder: '7', desc: '创建分享时的默认有效天数，0 为永久' },
   ]
 

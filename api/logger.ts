@@ -6,9 +6,8 @@
  */
 import fs from 'fs'
 import path from 'path'
-import { ROOT_DIR } from './db.js'
+import { LOGS_DIR } from './db.js'
 
-export const LOGS_DIR = path.join(ROOT_DIR, 'logs')
 const ACCESS_LOG = path.join(LOGS_DIR, 'webftp-access.log')
 const ERROR_LOG = path.join(LOGS_DIR, 'webftp-error.log')
 const STATS_LOG = path.join(LOGS_DIR, 'webftp-stats.log')

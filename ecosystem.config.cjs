@@ -24,8 +24,9 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3000,
       },
-      out_file: './logs/webftp-out.log',
-      error_file: './logs/webftp-error.log',
+      // 日志统一落到 data/logs：PM2 的 cwd 是程序目录（app/），故用相对上一级
+      out_file: '../data/logs/webftp-out.log',
+      error_file: '../data/logs/webftp-error.log',
       merge_logs: true,
       time: true,
     },

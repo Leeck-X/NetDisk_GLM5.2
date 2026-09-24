@@ -124,7 +124,7 @@ public partial class UsersPage : Page
         {
             MessageBox.Show("用户名和密码必填"); return;
         }
-        long quota = 10L * 1024 * 1024 * 1024;
+        long quota = 1L * 1024 * 1024 * 1024;
         if (long.TryParse(values[2], out var g)) quota = g * 1024 * 1024 * 1024;
         var role = string.IsNullOrEmpty(values[3]) ? "user" : values[3];
         var resp = await _api.SendAsync<object>("POST", "/api/admin/users", new

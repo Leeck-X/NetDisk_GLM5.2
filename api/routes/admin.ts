@@ -1,9 +1,10 @@
 import { Router } from 'express'
 import { nanoid } from 'nanoid'
-import { getDb, STORAGE_DIR, getSuperAdminId, isSuperAdmin, ROOT_DIR } from '../db.js'
+import { getDb, STORAGE_DIR, getSuperAdminId, isSuperAdmin, ROOT_DIR, WEBPAN_ROOT, DATA_DIR, CHUNKS_DIR, LOGS_DIR, DB_PATH } from '../db.js'
 import { ok, fail, hashPassword, formatBytes } from '../utils.js'
-import { readLogTail, LOGS_DIR } from '../logger.js'
+import { readLogTail } from '../logger.js'
 import { getStatsSummary, START_TIME } from '../stats.js'
+import { getDiskUsage } from '../space.js'
 import type { AuthRequest } from '../middleware.js'
 import { authRequired, adminOnly } from '../middleware.js'
 import fs from 'fs'
@@ -12,6 +13,9 @@ import os from 'os'
 
 const router = Router()
 router.use(authRequired, adminOnly)
+
+/** 新用户默认配额：1GB */
+const DEFAULT_QUOTA_BYTES = 1024 * 1024 * 1024
 
 /** 用户列表 */
 router.get('/users', (req: AuthRequest, res) => {
@@ -66,7 +70,7 @@ router.post('/users', (req: AuthRequest, res) => {
   const id = nanoid()
   db.prepare(
     `INSERT INTO users (id, username, password_hash, role, quota_bytes) VALUES (?, ?, ?, ?, ?)`,
-  ).run(id, username.trim(), hashPassword(password), role || 'user', quotaBytes || 10 * 1024 * 1024 * 1024)
+  ).run(id, username.trim(), hashPassword(password), role || 'user', quotaBytes || DEFAULT_QUOTA_BYTES)
   ok(res, { id, username: username.trim() }, '用户已创建')
 })
 
@@ -252,21 +256,40 @@ router.get('/request-stats', (req: AuthRequest, res) => {
   ok(res, getStatsSummary())
 })
 
+/** 递归统计目录占用（用户文件按 <userId>/ 分子目录存放，只看顶层必然恒为 0） */
+function dirSize(dir: string): number {
+  let total = 0
+  let entries: fs.Dirent[]
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return 0
+  }
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name)
+    try {
+      if (entry.isDirectory()) {
+        total += dirSize(full)
+      } else if (entry.isFile()) {
+        total += fs.statSync(full).size
+      }
+    } catch {
+      /* 单个条目读取失败不影响整体统计 */
+    }
+  }
+  return total
+}
+
 /** 系统信息 */
 router.get('/system-info', (req: AuthRequest, res) => {
   const port = process.env.PORT || '3000'
   const host = process.env.HOST || '0.0.0.0'
-  const dbPath = path.join(ROOT_DIR, 'data', 'webftp.db')
   let dbSize = 0
-  try { dbSize = fs.statSync(dbPath).size } catch { /* ignore */ }
-  let storageSize = 0
-  try {
-    for (const entry of fs.readdirSync(STORAGE_DIR, { withFileTypes: true })) {
-      if (entry.isFile()) {
-        storageSize += fs.statSync(path.join(STORAGE_DIR, entry.name)).size
-      }
-    }
-  } catch { /* ignore */ }
+  try { dbSize = fs.statSync(DB_PATH).size } catch { /* ignore */ }
+  // 用户文件与待合并分片都要计入，否则磁盘被写满时后台看到的仍是 0
+  const storageSize = dirSize(STORAGE_DIR)
+  const chunksSize = dirSize(CHUNKS_DIR)
+  const disk = getDiskUsage(STORAGE_DIR)
   ok(res, {
     version: '1.0.0',
     nodeVersion: process.version,
@@ -280,14 +303,23 @@ router.get('/system-info', (req: AuthRequest, res) => {
     port,
     host,
     rootDir: ROOT_DIR,
-    dataDir: path.join(ROOT_DIR, 'data'),
+    webpanRoot: WEBPAN_ROOT,
+    dataDir: DATA_DIR,
     storageDir: STORAGE_DIR,
+    chunksDir: CHUNKS_DIR,
     logsDir: LOGS_DIR,
-    dbPath,
+    dbPath: DB_PATH,
     dbSize,
+    dbSizeHuman: formatBytes(dbSize),
     storageSize,
     storageSizeHuman: formatBytes(storageSize),
-    dbSizeHuman: formatBytes(dbSize),
+    chunksSize,
+    chunksSizeHuman: formatBytes(chunksSize),
+    disk,
+    diskTotalHuman: formatBytes(disk.total),
+    diskAvailableHuman: formatBytes(disk.available),
+    diskUsableHuman: formatBytes(disk.usable),
+    diskReserveHuman: formatBytes(disk.reserve),
     pid: process.pid,
     startTime: new Date(START_TIME).toISOString(),
   })
