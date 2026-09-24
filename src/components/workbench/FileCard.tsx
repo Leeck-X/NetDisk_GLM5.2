@@ -50,6 +50,27 @@ export function FileCard({
     onMenu(file, e.clientX, e.clientY)
   }
 
+  /** 复选框：多选时保留其他选中项，只切换自己 */
+  const handleCheck = (e: MouseEvent) => {
+    e.stopPropagation()
+    onSelect(file.id, true)
+  }
+
+  const Checkbox = (
+    <button
+      onClick={handleCheck}
+      title={selected ? '取消选择' : '选择'}
+      className={cn(
+        'w-5 h-5 rounded-md border flex items-center justify-center transition-all duration-200 shrink-0',
+        selected
+          ? 'bg-cyan-glow border-cyan-glow shadow-glow-cyan'
+          : 'border-white/30 bg-black/20 hover:border-cyan-glow/60 opacity-0 group-hover:opacity-100 focus:opacity-100'
+      )}
+    >
+      {selected && <Check className="w-3 h-3 text-midnight-900" strokeWidth={3} />}
+    </button>
+  )
+
   if (view === 'list') {
     return (
       <div
@@ -62,6 +83,7 @@ export function FileCard({
         )}
         style={{ animationDelay: `${Math.min(index * 0.02, 0.3)}s` }}
       >
+        {Checkbox}
         <FileIcon file={file} size={36} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
@@ -96,16 +118,11 @@ export function FileCard({
       )}
       style={{ animationDelay: `${Math.min(index * 0.03, 0.4)}s` }}
     >
-      {selected && (
-        <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-cyan-glow flex items-center justify-center shadow-glow-cyan">
-          <Check className="w-3 h-3 text-midnight-900" strokeWidth={3} />
-        </div>
-      )}
       {/* 缩略图区 */}
       <div className="aspect-[4/3] rounded-xl overflow-hidden glass-subtle flex items-center justify-center mb-3 relative">
         {showThumb ? (
           <img
-            src={filesApi.previewUrl(file.id)}
+            src={filesApi.thumbUrl(file.id)}
             alt={file.name}
             className="w-full h-full object-cover"
             loading="lazy"
@@ -114,6 +131,8 @@ export function FileCard({
         ) : (
           <FileIcon file={file} size={56} />
         )}
+        {/* 复选框 */}
+        <div className="absolute top-2 left-2">{Checkbox}</div>
         <button
           onClick={(e) => {
             e.stopPropagation()

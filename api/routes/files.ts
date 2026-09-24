@@ -8,6 +8,8 @@ import archiver from 'archiver'
 import { nanoid } from 'nanoid'
 import { getDb, userStorageDir, CHUNKS_DIR, STORAGE_DIR } from '../db.js'
 import { ok, fail, isForbiddenExt, getFileCategory, formatBytes } from '../utils.js'
+import { getConfigNumber } from '../config.js'
+import { createThumb, findThumb } from '../thumbs.js'
 import { checkDiskSpace } from '../space.js'
 import { activeUploads } from '../gc.js'
 import { writeError } from '../logger.js'
@@ -148,13 +150,10 @@ function sweepPendingUploads(): void {
 
 /** 单文件大小上限：优先取后台配置 upload_max_size（MB），其次环境变量，默认 2048MB */
 function maxUploadBytes(): number {
-  const row = getDb()
-    .prepare('SELECT value FROM config WHERE key = ?')
-    .get('upload_max_size') as { value: string } | undefined
-  const fromConfig = Number(row?.value)
+  const fromConfig = getConfigNumber('upload_max_size')
   const fromEnv = Number(process.env.UPLOAD_MAX_SIZE_MB)
   const mb =
-    Number.isFinite(fromConfig) && fromConfig > 0
+    fromConfig > 0
       ? fromConfig
       : Number.isFinite(fromEnv) && fromEnv > 0
         ? fromEnv
@@ -770,6 +769,41 @@ router.get('/preview', (req: AuthRequest, res) => {
   res.setHeader('Content-Type', file.mimeType)
   res.setHeader('Cache-Control', 'private, max-age=3600')
   fs.createReadStream(file.storagePath).pipe(res)
+})
+
+/**
+ * 缩略图（列表/详情专用）
+ * 原图动辄数 MB，列表一次要加载十几张，这里统一改走小尺寸 WebP 缓存。
+ */
+router.get('/thumb', async (req: AuthRequest, res) => {
+  const id = req.query.id as string
+  const db = getDb()
+  const file = db.prepare(`SELECT ${DB_FILE_FIELDS} FROM files WHERE id = ? AND user_id = ?`).get(id, req.user!.id) as AppFile | undefined
+  if (!file || file.type !== 'file') {
+    fail(res, '文件不存在', 404, 404)
+    return
+  }
+  if (!file.storagePath || !fs.existsSync(file.storagePath)) {
+    fail(res, '文件已丢失', 404, 404)
+    return
+  }
+  if (getFileCategory(file.mimeType, file.ext) !== 'image') {
+    fail(res, '此文件不支持生成缩略图')
+    return
+  }
+  // 缓存键带上更新时间：原图被替换后旧缩略图自动失效
+  const stamp = String(new Date(file.updatedAt).getTime() || 0)
+  const target = findThumb(file.id, stamp) || (await createThumb(file.storagePath, file.id, stamp))
+  if (!target) {
+    // sharp 不可用时回退为原图，保证前端仍能显示
+    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream')
+    res.setHeader('Cache-Control', 'private, max-age=600')
+    fs.createReadStream(file.storagePath).pipe(res)
+    return
+  }
+  res.setHeader('Content-Type', 'image/webp')
+  res.setHeader('Cache-Control', 'private, max-age=86400')
+  fs.createReadStream(target).pipe(res)
 })
 
 /** 同步用户已用空间（口径含回收站：回收站里的文件同样占着磁盘） */

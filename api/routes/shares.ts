@@ -4,7 +4,7 @@ import fs from 'fs'
 import { nanoid } from 'nanoid'
 import archiver from 'archiver'
 import { getDb } from '../db.js'
-import { ok, fail, hashPassword, comparePassword, genToken } from '../utils.js'
+import { ok, fail, hashPassword, comparePassword, genToken, getFileCategory } from '../utils.js'
 import type { AuthRequest } from '../middleware.js'
 import { authRequired } from '../middleware.js'
 import type { AppFile } from './files.js'
@@ -142,6 +142,51 @@ router.get('/:token', (req, res) => {
       mimeType: file.mimeType,
     },
   })
+})
+
+/** 访客：内联预览分享的图片/视频/音频/PDF（不消耗下载次数） */
+router.get('/preview/:token', (req, res) => {
+  const token = req.params.token
+  const password = (req.query.password as string) || undefined
+  const db = getDb()
+  const share = db.prepare(`
+    SELECT s.id, s.password_hash, s.expire_at, s.download_limit, s.downloads, f.id as fileId
+    FROM shares s JOIN files f ON s.file_id = f.id
+    WHERE s.token = ? AND f.deleted = 0
+  `).get(token) as
+    | { id: string; password_hash: string | null; expire_at: string | null; download_limit: number | null; downloads: number; fileId: string }
+    | undefined
+  if (!share) {
+    fail(res, '分享不存在或已失效', 404, 404)
+    return
+  }
+  if (share.expire_at && new Date(share.expire_at) < new Date()) {
+    fail(res, '分享已过期')
+    return
+  }
+  if (share.download_limit && share.downloads >= share.download_limit) {
+    fail(res, '下载次数已用尽')
+    return
+  }
+  if (share.password_hash) {
+    if (!password || !comparePassword(password, share.password_hash)) {
+      fail(res, '提取码错误', 403, 403)
+      return
+    }
+  }
+  const file = db.prepare(`SELECT ${DB_FILE_FIELDS} FROM files WHERE id = ?`).get(share.fileId) as AppFile
+  if (!file.storagePath || !fs.existsSync(file.storagePath)) {
+    fail(res, '文件已丢失', 404, 404)
+    return
+  }
+  const category = getFileCategory(file.mimeType, file.ext)
+  if (!['image', 'video', 'audio'].includes(category) && file.mimeType !== 'application/pdf') {
+    fail(res, '此文件不支持预览')
+    return
+  }
+  res.setHeader('Content-Type', file.mimeType || 'application/octet-stream')
+  res.setHeader('Cache-Control', 'private, max-age=600')
+  fs.createReadStream(file.storagePath).pipe(res)
 })
 
 /** 访客：下载分享文件 */

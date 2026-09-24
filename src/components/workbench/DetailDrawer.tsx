@@ -1,4 +1,4 @@
-import { Download, Share2, Star, Trash2, Pencil, FolderDown } from 'lucide-react'
+import { Download, Share2, Star, Trash2, Pencil, FolderDown, ExternalLink } from 'lucide-react'
 import { GlassPanel, GlassButton } from '@/components/ui/Glass'
 import { FileIcon } from '@/components/FileIcon'
 import { filesApi } from '@/lib/api'
@@ -18,6 +18,9 @@ interface DetailDrawerProps {
 export function DetailDrawer({ file, onClose, onShare, onRename, onDelete, onStarToggle }: DetailDrawerProps) {
   if (!file) return null
   const isImage = getFileCategory(file.mimeType, file.ext) === 'image'
+  const isPreviewable =
+    ['image', 'video', 'audio'].includes(getFileCategory(file.mimeType, file.ext)) ||
+    file.mimeType === 'application/pdf'
 
   return (
     <>
@@ -27,15 +30,26 @@ export function DetailDrawer({ file, onClose, onShare, onRename, onDelete, onSta
           {/* 头部 */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
             <h3 className="font-display font-semibold text-white">文件详情</h3>
-            <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none">×</button>
+            <div className="flex items-center gap-1">
+              {isPreviewable && (
+                <button
+                  onClick={() => window.open(filesApi.previewUrl(file.id), '_blank', 'noopener')}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-glow hover:bg-white/5 transition-colors"
+                  title="在新标签页打开原图"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </button>
+              )}
+              <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none px-1">×</button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto scroll-glass p-5 space-y-5">
-            {/* 预览区 */}
+            {/* 预览区：用缩略图保证秒开，看原图走右上角「新标签页打开」 */}
             <div className="aspect-video rounded-2xl overflow-hidden glass-subtle flex items-center justify-center">
               {isImage ? (
                 <img
-                  src={filesApi.previewUrl(file.id)}
+                  src={filesApi.thumbUrl(file.id)}
                   alt={file.name}
                   className="w-full h-full object-contain"
                   onError={(e) => {
@@ -70,6 +84,13 @@ export function DetailDrawer({ file, onClose, onShare, onRename, onDelete, onSta
 
             {/* 操作按钮 */}
             <div className="grid grid-cols-4 gap-2">
+              {isPreviewable && (
+                <ActionButton
+                  icon={<ExternalLink className="w-4 h-4" />}
+                  label="新标签页"
+                  onClick={() => window.open(filesApi.previewUrl(file.id), '_blank', 'noopener')}
+                />
+              )}
               <ActionButton icon={<Download className="w-4 h-4" />} label="下载" onClick={() => downloadFile(file)} />
               {file.type === 'folder' && (
                 <ActionButton icon={<FolderDown className="w-4 h-4" />} label="打包" onClick={() => downloadFolder(file)} />

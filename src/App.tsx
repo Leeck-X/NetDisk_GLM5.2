@@ -4,6 +4,7 @@ import { AppBackground } from '@/components/AppBackground'
 import { ToastContainer } from '@/components/ui/Toast'
 import { ConfirmProvider } from '@/components/ui/Confirm'
 import { useAuthStore } from '@/store/auth'
+import { useSiteStore } from '@/store/site'
 import Login from '@/pages/Login'
 import ChangePassword from '@/pages/ChangePassword'
 import Workbench from '@/pages/Workbench'
@@ -40,6 +41,11 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  // 站点名称/描述来自后台配置，启动时拉取一次并同步浏览器标题
+  useEffect(() => {
+    useSiteStore.getState().load()
+  }, [])
+
   return (
     <Router>
       <AppBackground />

@@ -1,12 +1,59 @@
 import { Router } from 'express'
-import { getDb } from '../db.js'
+import { nanoid } from 'nanoid'
+import { getDb, userStorageDir } from '../db.js'
 import { ok, fail, signToken, comparePassword, hashPassword, needForceChangePassword, clearForceChangePassword } from '../utils.js'
+import { getConfig, getConfigBool, getConfigNumber } from '../config.js'
 import type { AuthRequest } from '../middleware.js'
 import { authRequired } from '../middleware.js'
 import cookieParser from 'cookie-parser'
 
 const router = Router()
 router.use(cookieParser())
+
+/** 站点公开信息：登录页/分享页的品牌文案与注册开关 */
+router.get('/site', (req, res) => {
+  ok(res, {
+    siteName: getConfig('site_name'),
+    siteDescription: getConfig('site_description'),
+    allowRegister: getConfigBool('allow_register'),
+  })
+})
+
+/** 注册（由后台「开放注册」开关控制） */
+router.post('/register', (req, res) => {
+  if (!getConfigBool('allow_register')) {
+    fail(res, '本站已关闭注册', 403, 403)
+    return
+  }
+  const { username, password } = req.body as { username: string; password: string }
+  const name = (username || '').trim()
+  if (!name || !password) {
+    fail(res, '请填写用户名与密码')
+    return
+  }
+  if (name.length < 3 || name.length > 20) {
+    fail(res, '用户名长度需在 3-20 个字符之间')
+    return
+  }
+  if (password.length < 6) {
+    fail(res, '密码至少 6 位')
+    return
+  }
+  const db = getDb()
+  const exists = db.prepare('SELECT id FROM users WHERE username = ?').get(name) as { id: string } | undefined
+  if (exists) {
+    fail(res, '用户名已存在')
+    return
+  }
+  const quotaBytes = Math.max(0, getConfigNumber('default_quota_gb')) * 1024 * 1024 * 1024
+  const id = nanoid()
+  db.prepare(
+    'INSERT INTO users (id, username, password_hash, role, quota_bytes) VALUES (?, ?, ?, ?, ?)',
+  ).run(id, name, hashPassword(password), 'user', quotaBytes)
+  // 提前建好用户目录，避免首次上传时才创建
+  userStorageDir(id)
+  ok(res, null, '注册成功，请登录')
+})
 
 /** 登录 */
 router.post('/login', (req: AuthRequest, res) => {

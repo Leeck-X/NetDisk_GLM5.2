@@ -65,6 +65,13 @@ export interface ApiResponse<T = unknown> {
   data: T
 }
 
+/** 站点公开信息（品牌文案与注册开关，由后台配置决定） */
+export interface SiteInfo {
+  siteName: string
+  siteDescription: string
+  allowRegister: boolean
+}
+
 export interface AdminUser {
   id: string
   username: string
@@ -81,6 +88,27 @@ export interface AdminUser {
   isSuper: boolean
 }
 
+export interface DiskUsage {
+  total: number
+  available: number
+  reserve: number
+  usable: number
+  used: number
+  usedPercent: number
+}
+
+export interface UserSpace {
+  id: string
+  username: string
+  role: string
+  quotaBytes: number
+  usedBytes: number
+  usedHuman: string
+  quotaHuman: string
+  usedPercent: number
+  isSuper: boolean
+}
+
 export interface AdminStats {
   userCount: number
   fileCount: number
@@ -91,8 +119,71 @@ export interface AdminStats {
   totalQuota: number
   totalQuotaHuman: string
   usedPercent: number
+  trashCount: number
+  trashSize: number
+  trashSizeHuman: string
+  disk: DiskUsage
+  diskTotalHuman: string
+  diskUsedHuman: string
+  diskAvailableHuman: string
+  diskUsableHuman: string
+  diskReserveHuman: string
+  usersSpace: UserSpace[]
   daily: Array<{ date: string; count: number; size: number }>
   category: Array<{ cat: string; count: number }>
+}
+
+export interface SystemInfo {
+  version: string
+  nodeVersion: string
+  platform: string
+  hostname: string
+  cpus: number
+  totalMem: number
+  freeMem: number
+  uptime: number
+  processUptime: number
+  port: string
+  host: string
+  rootDir: string
+  webpanRoot: string
+  dataDir: string
+  storageDir: string
+  chunksDir: string
+  logsDir: string
+  thumbsDir: string
+  dbPath: string
+  dbSize: number
+  dbSizeHuman: string
+  storageSize: number
+  storageSizeHuman: string
+  chunksSize: number
+  chunksSizeHuman: string
+  thumbsSize: number
+  thumbsSizeHuman: string
+  disk: DiskUsage
+  diskTotalHuman: string
+  diskAvailableHuman: string
+  diskUsableHuman: string
+  diskReserveHuman: string
+  diskReserveRatio: number
+  chunkTtlHours: number
+  orphanTtlHours: number
+  gcIntervalMinutes: number
+  trashRetentionDays: number
+  pid: number
+  startTime: string
+}
+
+export interface GcResult {
+  chunkDirs: number
+  chunkRows: number
+  orphanFiles: number
+  trashFiles: number
+  thumbs: number
+  freedBytes: number
+  freedHuman: string
+  missingFiles: number
 }
 
 export type FileCategory = 'image' | 'video' | 'audio' | 'doc' | 'archive' | 'other'

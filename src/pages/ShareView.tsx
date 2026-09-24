@@ -1,17 +1,19 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import {
-  Cloud, Lock, Download, Clock, Globe, AlertCircle,
+  Cloud, Lock, Download, Clock, Globe, AlertCircle, ExternalLink,
   Infinity as InfinityIcon,
 } from 'lucide-react'
 import { GlassPanel, GlassButton, GlassInput, LoadingSpinner } from '@/components/ui/Glass'
 import { FileIcon } from '@/components/FileIcon'
 import { sharesApi } from '@/lib/api'
+import { useSiteStore } from '@/store/site'
 import { toast } from '@/components/ui/Toast'
-import { formatBytes, formatDate, type ShareView as ShareViewType } from '@/lib/types'
+import { formatBytes, formatDate, getFileCategory, type ShareView as ShareViewType } from '@/lib/types'
 
 export default function ShareView() {
   const { token } = useParams<{ token: string }>()
+  const siteName = useSiteStore((s) => s.info.siteName)
   const [view, setView] = useState<ShareViewType | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -62,6 +64,16 @@ export default function ShareView() {
     toast.info('开始下载...')
   }
 
+  // 访客内联预览地址：带提取码才能通过后端的密码校验
+  const previewUrl = token ? sharesApi.previewUrl(token, verified ? password : undefined) : ''
+
+  const category = view ? getFileCategory(view.file.mimeType, view.file.ext) : 'other'
+  const isImage = category === 'image'
+  const isVideo = category === 'video'
+  const isAudio = category === 'audio'
+  const isPdf = view?.file.mimeType === 'application/pdf'
+  const canPreview = !!view && view.file.type === 'file' && (isImage || isVideo || isAudio || isPdf)
+
   return (
     <div className="relative z-10 min-h-[100dvh] flex items-center justify-center p-6 py-10">
       <div className="w-full max-w-lg">
@@ -70,7 +82,7 @@ export default function ShareView() {
           <div className="inline-flex items-center justify-center w-16 h-16 mb-3 rounded-3xl glass-strong animate-pulse-glow">
             <Cloud className="w-8 h-8 text-cyan-glow" />
           </div>
-          <h1 className="font-display text-2xl font-bold text-white">WebFtp 分享</h1>
+          <h1 className="font-display text-2xl font-bold text-white">{siteName} 分享</h1>
         </div>
 
         {loading ? (
@@ -112,12 +124,29 @@ export default function ShareView() {
             <GlassPanel variant="strong" className="p-8 animate-fade-up">
               {/* 文件预览 */}
               <div className="flex flex-col items-center text-center mb-6">
-                <div className="w-20 h-20 mb-4 rounded-3xl glass-subtle flex items-center justify-center">
-                  <FileIcon
-                    file={{ type: view.file.type as 'file' | 'folder', mimeType: view.file.mimeType, ext: view.file.ext }}
-                    size={64}
-                  />
-                </div>
+                {canPreview ? (
+                  <div className="w-full mb-4 rounded-2xl overflow-hidden glass-subtle flex items-center justify-center max-h-72">
+                    {isImage && (
+                      <img src={previewUrl} alt={view.file.name} className="max-h-72 w-full object-contain" />
+                    )}
+                    {isVideo && (
+                      <video src={previewUrl} controls className="max-h-72 w-full bg-black" />
+                    )}
+                    {isAudio && (
+                      <audio src={previewUrl} controls className="w-full px-3 py-6" />
+                    )}
+                    {isPdf && (
+                      <iframe src={previewUrl} title={view.file.name} className="w-full h-72 bg-white" />
+                    )}
+                  </div>
+                ) : (
+                  <div className="w-20 h-20 mb-4 rounded-3xl glass-subtle flex items-center justify-center">
+                    <FileIcon
+                      file={{ type: view.file.type as 'file' | 'folder', mimeType: view.file.mimeType, ext: view.file.ext }}
+                      size={64}
+                    />
+                  </div>
+                )}
                 <h2 className="font-display text-lg font-semibold text-white mb-1 break-all px-4">
                   {view.file.name}
                 </h2>
@@ -154,12 +183,25 @@ export default function ShareView() {
                 </span>
               </div>
 
-              <GlassButton variant="primary" size="lg" className="w-full" icon={<Download className="w-4 h-4" />} onClick={onDownload}>
-                下载文件
-              </GlassButton>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <GlassButton variant="primary" size="lg" className="flex-1" icon={<Download className="w-4 h-4" />} onClick={onDownload}>
+                  下载文件
+                </GlassButton>
+                {canPreview && (
+                  <GlassButton
+                    variant="glass"
+                    size="lg"
+                    className="flex-1"
+                    icon={<ExternalLink className="w-4 h-4" />}
+                    onClick={() => window.open(previewUrl, '_blank', 'noopener')}
+                  >
+                    新标签页打开
+                  </GlassButton>
+                )}
+              </div>
 
               <p className="text-center text-xs text-slate-500 mt-4">
-                通过 WebFtp 自托管网盘系统分享
+                通过 {siteName} 自托管网盘系统分享
               </p>
             </GlassPanel>
           )

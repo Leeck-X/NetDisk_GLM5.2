@@ -1,26 +1,28 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Routes, Route, useNavigate, useLocation, Link } from 'react-router-dom'
+import { Routes, Route, useLocation, Link } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Settings, Cloud, HardDrive, FileText,
   Share2, FolderPlus, TrendingUp, ArrowLeft, UserPlus, KeyRound,
-  Power, Trash2, ShieldAlert, ShieldCheck,
+  Power, Trash2, ShieldAlert, ShieldCheck, Database, Server, RefreshCw, Menu,
 } from 'lucide-react'
 import { Sidebar } from '@/components/workbench/Sidebar'
 import { GlassPanel, GlassButton, GlassInput, EmptyState, LoadingSpinner } from '@/components/ui/Glass'
 import { GlassModal } from '@/components/ui/Glass'
+import { PieChart, type PieSlice } from '@/components/ui/PieChart'
 import { confirm } from '@/components/ui/Confirm'
 import { toast } from '@/components/ui/Toast'
 import { adminApi } from '@/lib/api'
-import type { AdminStats, AdminUser } from '@/lib/types'
+import type { AdminStats, AdminUser, SystemInfo } from '@/lib/types'
 import { formatBytes, formatDate } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 export default function Admin() {
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   return (
     <div className="relative z-10 h-[100dvh] flex overflow-hidden">
-      <Sidebar open={false} onClose={() => {}} />
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex-1 min-h-0 overflow-y-auto scroll-glass p-4 lg:pl-0">
-        <AdminNav />
+        <AdminNav onMenu={() => setSidebarOpen(true)} />
         <div className="mt-4">
           <Routes>
             <Route path="stats" element={<StatsPage />} />
@@ -34,7 +36,7 @@ export default function Admin() {
   )
 }
 
-function AdminNav() {
+function AdminNav({ onMenu }: { onMenu: () => void }) {
   const location = useLocation()
   const items = [
     { to: '/admin/stats', label: '系统统计', icon: LayoutDashboard },
@@ -43,6 +45,13 @@ function AdminNav() {
   ]
   return (
     <GlassPanel variant="strong" className="px-3 py-2 flex items-center gap-1 overflow-x-auto scroll-glass">
+      <button
+        onClick={onMenu}
+        className="lg:hidden p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors shrink-0"
+        title="打开菜单"
+      >
+        <Menu className="w-4 h-4" />
+      </button>
       <Link to="/" className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors shrink-0">
         <ArrowLeft className="w-4 h-4" />
       </Link>
@@ -68,6 +77,19 @@ function AdminNav() {
 }
 
 /* ============ 统计页 ============ */
+/** 饼图配色：纯 SVG 需使用具体色值，不能用 Tailwind 类名 */
+const PIE_COLORS = ['#22d3ee', '#a78bfa', '#fb7185', '#fbbf24', '#34d399', '#60a5fa', '#f472b6', '#94a3b8']
+
+/** 文件类型展示元数据 */
+const CATEGORY_META: Record<string, { label: string; color: string }> = {
+  image: { label: '图片', color: '#a78bfa' },
+  video: { label: '视频', color: '#fb7185' },
+  audio: { label: '音频', color: '#fbbf24' },
+  doc: { label: '文档', color: '#38bdf8' },
+  archive: { label: '压缩包', color: '#34d399' },
+  other: { label: '其它', color: '#94a3b8' },
+}
+
 function StatsPage() {
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -85,15 +107,26 @@ function StatsPage() {
   }
 
   const maxDaily = Math.max(...stats.daily.map((d) => d.count), 1)
-  const categoryColors: Record<string, string> = {
-    image: 'bg-violet-400',
-    video: 'bg-rose-400',
-    audio: 'bg-amber-400',
-    doc: 'bg-sky-400',
-    archive: 'bg-emerald-400',
-    other: 'bg-slate-400',
-  }
-  const totalCat = stats.category.reduce((s, c) => s + c.count, 0) || 1
+  const diskKnown = stats.disk.total > 0
+  // 磁盘构成：已使用 + 可用 + 系统预留 = 总容量
+  const diskSlices: PieSlice[] = [
+    { label: '已使用', value: stats.disk.used, color: '#fb7185' },
+    { label: '剩余可用', value: stats.disk.usable, color: '#22d3ee' },
+    { label: '系统预留', value: stats.disk.reserve, color: '#64748b' },
+  ]
+  // 用户空间占用：按已用字节降序，最多取前 6 个避免图例过长
+  const userSlices: PieSlice[] = stats.usersSpace
+    .filter((u) => u.usedBytes > 0)
+    .slice(0, 6)
+    .map((u, i) => ({ label: u.username, value: u.usedBytes, color: PIE_COLORS[i % PIE_COLORS.length] }))
+  const categorySlices: PieSlice[] = stats.category
+    .slice()
+    .sort((a, b) => b.count - a.count)
+    .map((c) => ({
+      label: CATEGORY_META[c.cat]?.label || c.cat,
+      value: c.count,
+      color: CATEGORY_META[c.cat]?.color || '#94a3b8',
+    }))
 
   return (
     <div className="space-y-4">
@@ -106,10 +139,66 @@ function StatsPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* 存储用量 */}
+        {/* 磁盘空间（真实文件系统容量 + 预留策略） */}
         <GlassPanel variant="strong" className="p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-display font-semibold text-white">存储空间</h3>
+            <h3 className="font-display font-semibold text-white">磁盘空间</h3>
+            <HardDrive className="w-4 h-4 text-cyan-glow" />
+          </div>
+          {diskKnown ? (
+            <>
+              <PieChart
+                data={diskSlices}
+                centerLabel={`${stats.disk.usedPercent}%`}
+                centerSub="已使用"
+                formatValue={(s) => formatBytes(s.value)}
+              />
+              <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                <InfoItem label="总容量" value={stats.diskTotalHuman} />
+                <InfoItem label="已使用" value={stats.diskUsedHuman} />
+                <InfoItem label="剩余可用" value={stats.diskUsableHuman} accent />
+                <InfoItem label="系统预留" value={stats.diskReserveHuman} />
+              </dl>
+            </>
+          ) : (
+            <EmptyState icon={<HardDrive className="w-6 h-6" />} title="无法读取磁盘信息" />
+          )}
+        </GlassPanel>
+
+        {/* 用户空间占用 */}
+        <GlassPanel variant="strong" className="p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-display font-semibold text-white">用户空间占用</h3>
+            <Users className="w-4 h-4 text-cyan-glow" />
+          </div>
+          {userSlices.length === 0 ? (
+            <EmptyState icon={<Users className="w-6 h-6" />} title="暂无用户数据" />
+          ) : (
+            <PieChart
+              data={userSlices}
+              centerLabel={stats.totalSizeHuman}
+              centerSub="已用空间"
+              formatValue={(s) => formatBytes(s.value)}
+            />
+          )}
+        </GlassPanel>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* 文件类型分布 */}
+        <GlassPanel variant="strong" className="p-5">
+          <h3 className="font-display font-semibold text-white mb-4">文件类型分布</h3>
+          {categorySlices.length === 0 ? (
+            <EmptyState icon={<FolderPlus className="w-6 h-6" />} title="暂无数据" />
+          ) : (
+            <PieChart data={categorySlices} centerLabel={String(stats.fileCount)} centerSub="个文件" />
+          )}
+        </GlassPanel>
+
+        {/* 配额与回收站 */}
+        <GlassPanel variant="strong" className="p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-display font-semibold text-white">配额与回收站</h3>
             <TrendingUp className="w-4 h-4 text-cyan-glow" />
           </div>
           <div className="flex items-end justify-between mb-3">
@@ -122,30 +211,17 @@ function StatsPage() {
               style={{ width: `${stats.usedPercent}%` }}
             />
           </div>
-          <p className="text-xs text-slate-400 mt-2">已使用 {stats.usedPercent}% · 总配额 {stats.totalQuotaHuman}</p>
-        </GlassPanel>
-
-        {/* 文件类型分布 */}
-        <GlassPanel variant="strong" className="p-5">
-          <h3 className="font-display font-semibold text-white mb-4">文件类型分布</h3>
-          {totalCat === 1 && stats.fileCount === 0 ? (
-            <EmptyState icon={<FolderPlus className="w-6 h-6" />} title="暂无数据" />
-          ) : (
-            <div className="space-y-2.5">
-              {stats.category.map((c) => (
-                <div key={c.cat} className="flex items-center gap-3">
-                  <span className="text-xs text-slate-400 w-12 capitalize">{c.cat}</span>
-                  <div className="flex-1 h-2 rounded-full bg-white/5 overflow-hidden">
-                    <div
-                      className={cn('h-full rounded-full', categoryColors[c.cat] || 'bg-slate-400')}
-                      style={{ width: `${(c.count / totalCat) * 100}%` }}
-                    />
-                  </div>
-                  <span className="text-xs text-slate-300 font-mono w-10 text-right">{c.count}</span>
-                </div>
-              ))}
+          <p className="text-xs text-slate-400 mt-2">用户已用占配额 {stats.usedPercent}%</p>
+          <div className="mt-4 pt-4 border-t border-white/5 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-rose-500/10 flex items-center justify-center shrink-0">
+              <Trash2 className="w-4 h-4 text-rose-400" />
             </div>
-          )}
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-slate-400">回收站占用</p>
+              <p className="text-sm text-white font-mono">{stats.trashSizeHuman}</p>
+            </div>
+            <span className="text-xs text-slate-500">{stats.trashCount} 项</span>
+          </div>
         </GlassPanel>
       </div>
 
@@ -194,6 +270,15 @@ function StatCard({ icon: Icon, label, value, color }: { icon: typeof Users; lab
         <p className="text-lg font-display font-bold text-white">{value}</p>
       </div>
     </GlassPanel>
+  )
+}
+
+function InfoItem({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <dt className="text-slate-500">{label}</dt>
+      <dd className={cn('font-mono', accent ? 'text-cyan-glow' : 'text-slate-200')}>{value}</dd>
+    </div>
   )
 }
 
@@ -539,15 +624,50 @@ function EditUserModal({ user, onClose, onSaved }: { user: AdminUser | null; onC
 }
 
 /* ============ 配置页 ============ */
+/** 秒 → 人类可读时长 */
+function formatDuration(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds))
+  const d = Math.floor(s / 86400)
+  const h = Math.floor((s % 86400) / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  if (d > 0) return `${d} 天 ${h} 小时`
+  if (h > 0) return `${h} 小时 ${m} 分`
+  return `${m} 分 ${s % 60} 秒`
+}
+
+/** 目录路径展示行 */
+function PathRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+      <span className="text-slate-500 sm:w-20 shrink-0">{label}</span>
+      <span className="font-mono text-slate-200 break-all">{value}</span>
+    </div>
+  )
+}
+
+/** 目录占用统计块 */
+function SizeCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="glass-subtle rounded-xl px-3 py-2.5 text-center">
+      <p className="text-[11px] text-slate-400">{label}</p>
+      <p className="text-sm font-mono text-white mt-0.5">{value}</p>
+    </div>
+  )
+}
+
 function ConfigPage() {
   const [config, setConfig] = useState<Record<string, string>>({})
+  const [info, setInfo] = useState<SystemInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [gcLoading, setGcLoading] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      setConfig(await adminApi.config())
+      const [cfg, sys] = await Promise.all([adminApi.config(), adminApi.systemInfo()])
+      setConfig(cfg)
+      setInfo(sys)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : '加载失败')
     } finally {
@@ -571,6 +691,27 @@ function ConfigPage() {
     }
   }
 
+  // 手动触发一次垃圾清理，完成后刷新目录占用
+  const onRunGc = () => {
+    confirm({
+      title: '立即清理垃圾',
+      message: '将清理孤儿分片目录、过期上传分片与无主文件，不会删除任何正常文件，确定继续？',
+      confirmText: '开始清理',
+      onConfirm: async () => {
+        setGcLoading(true)
+        try {
+          const result = await adminApi.runGc()
+          toast.success(`清理完成，释放 ${result.freedHuman}`)
+          setInfo(await adminApi.systemInfo())
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : '清理失败')
+        } finally {
+          setGcLoading(false)
+        }
+      },
+    })
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -579,12 +720,24 @@ function ConfigPage() {
     )
   }
 
-  const configItems = [
-    { key: 'site_name', label: '站点名称', placeholder: 'WebFtp', desc: '显示在浏览器标签与登录页' },
-    { key: 'upload_max_size', label: '单文件大小上限（MB）', placeholder: '2048', desc: '单个上传文件大小限制' },
-    { key: 'default_quota_gb', label: '新用户默认配额（GB）', placeholder: '1', desc: '创建新用户时的默认存储配额' },
-    { key: 'share_default_expire_days', label: '分享默认有效期（天）', placeholder: '7', desc: '创建分享时的默认有效天数，0 为永久' },
+  /** 配置项：type 为 switch 时渲染开关，否则渲染输入框 */
+  const configItems: Array<{
+    key: string
+    label: string
+    placeholder?: string
+    desc: string
+    type?: 'text' | 'number' | 'switch'
+  }> = [
+    { key: 'site_name', label: '站点名称', placeholder: 'WebFtp', desc: '显示在浏览器标签、登录页与分享页' },
+    { key: 'site_description', label: '站点描述', placeholder: '自托管网盘系统 · 数据尽在掌握', desc: '登录页与分享页的副标题文案' },
+    { key: 'allow_register', label: '开放注册', desc: '开启后任何人都可在登录页自助注册账号', type: 'switch' },
+    { key: 'default_quota_gb', label: '新用户默认配额（GB）', placeholder: '1', desc: '创建新用户与自助注册时的默认存储配额', type: 'number' },
+    { key: 'upload_max_size', label: '单文件大小上限（MB）', placeholder: '2048', desc: '单个上传文件大小限制', type: 'number' },
+    { key: 'share_default_expire_days', label: '分享默认有效期（天）', placeholder: '7', desc: '创建分享时的默认有效天数，0 为永久', type: 'number' },
+    { key: 'trash_retention_days', label: '回收站保留天数', placeholder: '30', desc: '回收站中的文件超过该天数会被自动清理，0 为不清理', type: 'number' },
   ]
+
+  const isOn = (v?: string) => v === '1' || v === 'true'
 
   return (
     <div className="space-y-4">
@@ -594,38 +747,146 @@ function ConfigPage() {
         </div>
         <div>
           <h2 className="font-display font-semibold text-white">系统配置</h2>
-          <p className="text-xs text-slate-400 mt-0.5">站点与上传相关的全局配置</p>
+          <p className="text-xs text-slate-400 mt-0.5">站点配置、运行环境与存储信息</p>
         </div>
       </GlassPanel>
 
       <GlassPanel variant="strong" className="p-5 space-y-4">
-        {configItems.map((item) => (
-          <div key={item.key}>
-            <label className="block text-sm font-medium text-slate-200 mb-1">{item.label}</label>
-            <p className="text-xs text-slate-500 mb-2">{item.desc}</p>
-            <input
-              className="glass-input"
-              placeholder={item.placeholder}
-              value={config[item.key] || ''}
-              onChange={(e) => setConfig({ ...config, [item.key]: e.target.value })}
-            />
-          </div>
-        ))}
+        {configItems.map((item) =>
+          item.type === 'switch' ? (
+            <div key={item.key} className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <label className="block text-sm font-medium text-slate-200 mb-1">{item.label}</label>
+                <p className="text-xs text-slate-500">{item.desc}</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isOn(config[item.key])}
+                onClick={() => setConfig({ ...config, [item.key]: isOn(config[item.key]) ? '0' : '1' })}
+                className={cn(
+                  'relative w-11 h-6 rounded-full shrink-0 transition-colors',
+                  isOn(config[item.key]) ? 'bg-cyan-glow/70' : 'bg-white/10'
+                )}
+              >
+                <span
+                  className={cn(
+                    'absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
+                    isOn(config[item.key]) && 'translate-x-5'
+                  )}
+                />
+              </button>
+            </div>
+          ) : (
+            <div key={item.key}>
+              <label className="block text-sm font-medium text-slate-200 mb-1">{item.label}</label>
+              <p className="text-xs text-slate-500 mb-2">{item.desc}</p>
+              <input
+                className="glass-input"
+                type={item.type === 'number' ? 'number' : 'text'}
+                min={item.type === 'number' ? 0 : undefined}
+                placeholder={item.placeholder}
+                value={config[item.key] || ''}
+                onChange={(e) => setConfig({ ...config, [item.key]: e.target.value })}
+              />
+            </div>
+          )
+        )}
         <div className="flex justify-end pt-2">
           <GlassButton variant="primary" loading={saving} onClick={onSave}>保存配置</GlassButton>
         </div>
       </GlassPanel>
 
-      <GlassPanel variant="subtle" className="p-4 flex items-start gap-3">
-        <Cloud className="w-5 h-5 text-cyan-glow shrink-0 mt-0.5" />
-        <div className="text-xs text-slate-400 leading-relaxed">
-          <p className="text-slate-300 font-medium mb-1">部署信息</p>
-          存储根目录：<span className="font-mono text-cyan-glow">./storage/</span>
-          {' · '}数据库：<span className="font-mono text-cyan-glow">./data/webftp.db</span>
-          <br />
-          所有数据均存储在服务器本地，建议定期备份 <span className="font-mono">data/</span> 与 <span className="font-mono">storage/</span> 目录。
-        </div>
-      </GlassPanel>
+      {info && (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* 运行环境 */}
+            <GlassPanel variant="strong" className="p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-9 h-9 rounded-xl glass-subtle flex items-center justify-center">
+                  <Server className="w-4 h-4 text-cyan-glow" />
+                </div>
+                <h3 className="font-display font-semibold text-white">运行环境</h3>
+              </div>
+              <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3 text-xs">
+                <InfoItem label="版本" value={info.version} />
+                <InfoItem label="Node.js" value={info.nodeVersion} />
+                <InfoItem label="平台" value={info.platform} />
+                <InfoItem label="主机名" value={info.hostname} />
+                <InfoItem label="CPU 核心" value={`${info.cpus} 核`} />
+                <InfoItem label="监听地址" value={`${info.host}:${info.port}`} />
+                <InfoItem label="内存" value={`${formatBytes(info.freeMem)} / ${formatBytes(info.totalMem)}`} />
+                <InfoItem label="进程运行" value={formatDuration(info.processUptime)} />
+                <InfoItem label="进程 PID" value={String(info.pid)} />
+              </dl>
+            </GlassPanel>
+
+            {/* 空间保护与垃圾清理 */}
+            <GlassPanel variant="strong" className="p-5">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl glass-subtle flex items-center justify-center">
+                    <ShieldCheck className="w-4 h-4 text-cyan-glow" />
+                  </div>
+                  <h3 className="font-display font-semibold text-white">空间保护与垃圾清理</h3>
+                </div>
+                <GlassButton
+                  variant="glass"
+                  size="sm"
+                  loading={gcLoading}
+                  icon={<RefreshCw className="w-3.5 h-3.5" />}
+                  onClick={onRunGc}
+                >
+                  立即清理
+                </GlassButton>
+              </div>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+                <InfoItem label="磁盘预留比例" value={`${Math.round(info.diskReserveRatio * 100)}%`} />
+                <InfoItem label="磁盘总容量" value={info.diskTotalHuman} />
+                <InfoItem label="剩余可用" value={info.diskUsableHuman} accent />
+                <InfoItem label="系统预留" value={info.diskReserveHuman} />
+                <InfoItem label="分片保留时长" value={`${info.chunkTtlHours} 小时`} />
+                <InfoItem label="孤儿文件保留" value={`${info.orphanTtlHours} 小时`} />
+                <InfoItem label="回收站保留" value={info.trashRetentionDays > 0 ? `${info.trashRetentionDays} 天` : '不清理'} />
+                <InfoItem label="自动清理周期" value={`${info.gcIntervalMinutes} 分钟`} />
+              </dl>
+            </GlassPanel>
+          </div>
+
+          {/* 存储与目录 */}
+          <GlassPanel variant="strong" className="p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-9 h-9 rounded-xl glass-subtle flex items-center justify-center">
+                <Database className="w-4 h-4 text-cyan-glow" />
+              </div>
+              <h3 className="font-display font-semibold text-white">存储与目录</h3>
+            </div>
+            <div className="space-y-2.5 text-xs">
+              <PathRow label="数据根目录" value={info.webpanRoot} />
+              <PathRow label="用户文件" value={info.storageDir} />
+              <PathRow label="上传分片" value={info.chunksDir} />
+              <PathRow label="缩略图缓存" value={info.thumbsDir} />
+              <PathRow label="数据库" value={info.dbPath} />
+              <PathRow label="日志目录" value={info.logsDir} />
+            </div>
+            <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <SizeCell label="用户文件" value={info.storageSizeHuman} />
+              <SizeCell label="待合并分片" value={info.chunksSizeHuman} />
+              <SizeCell label="缩略图" value={info.thumbsSizeHuman} />
+              <SizeCell label="数据库" value={info.dbSizeHuman} />
+            </div>
+          </GlassPanel>
+
+          <GlassPanel variant="subtle" className="p-4 flex items-start gap-3">
+            <Cloud className="w-5 h-5 text-cyan-glow shrink-0 mt-0.5" />
+            <div className="text-xs text-slate-400 leading-relaxed">
+              <p className="text-slate-300 font-medium mb-1">备份提示</p>
+              所有数据均存储在服务器本地，数据目录 <span className="font-mono text-cyan-glow">{info.dataDir}</span>，
+              文件目录 <span className="font-mono text-cyan-glow">{info.storageDir}</span>，建议定期备份这两个目录。
+            </div>
+          </GlassPanel>
+        </>
+      )}
     </div>
   )
 }

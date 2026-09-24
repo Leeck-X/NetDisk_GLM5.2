@@ -1,16 +1,19 @@
 /**
  * 垃圾清理模块
  *
- * 三类垃圾：
+ * 五类垃圾：
  * 1. 孤儿分片目录 —— data/chunks/ 下超时未完成的上传残留
  * 2. 孤儿分片记录 —— file_chunks 中已无对应目录的行
  * 3. 孤儿文件    —— files/ 下磁盘存在但数据库无记录的文件
+ * 4. 过期回收站  —— 删除超过保留天数的文件（保留天数可在系统配置页调整）
+ * 5. 孤儿缩略图  —— data/thumbs/ 下已无对应文件记录的缓存
  *
  * 由 api/server.ts 启动时执行一次，之后每小时执行一次。
  */
 import fs from 'fs'
 import path from 'path'
-import { CHUNKS_DIR, STORAGE_DIR, getDb } from './db.js'
+import { CHUNKS_DIR, STORAGE_DIR, THUMBS_DIR, getDb } from './db.js'
+import { getConfigNumber } from './config.js'
 import { writeError } from './logger.js'
 import { formatBytes } from './utils.js'
 
@@ -29,6 +32,10 @@ export interface GcResult {
   chunkRows: number
   /** 清理的孤儿文件数 */
   orphanFiles: number
+  /** 清理的过期回收站文件数 */
+  trashFiles: number
+  /** 清理的孤儿缩略图数 */
+  thumbs: number
   /** 释放的字节数 */
   freedBytes: number
   /** 数据库有记录但磁盘文件丢失的数量（仅统计上报，不删记录） */
@@ -191,23 +198,106 @@ function countMissingFiles(result: GcResult): void {
   }
 }
 
+/**
+ * 清理回收站中超过保留天数的文件。
+ * 保留天数取配置项 trash_retention_days（0 表示不自动清理）。
+ * 目录要先递归收集子树中的磁盘路径，否则删掉父目录行后子文件会变成孤儿。
+ */
+function cleanupTrash(result: GcResult): void {
+  const days = getConfigNumber('trash_retention_days')
+  if (!(days > 0)) return
+  const db = getDb()
+  // deleted_at / updated_at 存的是 UTC 的 'YYYY-MM-DD HH:MM:SS'，按同样格式比较
+  const cutoff = new Date(Date.now() - days * 86400 * 1000).toISOString().slice(0, 19).replace('T', ' ')
+  const rows = db
+    .prepare(
+      `SELECT id FROM files
+       WHERE deleted = 1 AND COALESCE(deleted_at, updated_at) < ?`,
+    )
+    .all(cutoff) as { id: string }[]
+  if (rows.length === 0) return
+
+  const subtreePaths = db.prepare(
+    `WITH RECURSIVE sub(id) AS (
+       SELECT id FROM files WHERE id = ?
+       UNION ALL
+       SELECT f.id FROM files f JOIN sub s ON f.parent_id = s.id
+     )
+     SELECT storage_path FROM files
+     WHERE id IN (SELECT id FROM sub) AND storage_path IS NOT NULL`,
+  )
+  const del = db.prepare('DELETE FROM files WHERE id = ?')
+
+  for (const row of rows) {
+    const paths = (subtreePaths.all(row.id) as { storage_path: string }[]).map((r) => r.storage_path)
+    for (const p of paths) {
+      try {
+        const size = fs.statSync(p).size
+        fs.unlinkSync(p)
+        result.freedBytes += size
+        result.trashFiles++
+      } catch {
+        /* 文件可能已被删除，忽略 */
+      }
+    }
+    try {
+      del.run(row.id)
+    } catch (err) {
+      writeError(err as Error, 'gc: cleanupTrash')
+    }
+  }
+}
+
+/** 清理 data/thumbs/ 下已无对应文件记录的缩略图缓存 */
+function cleanupOrphanThumbs(result: GcResult): void {
+  if (!fs.existsSync(THUMBS_DIR)) return
+  const db = getDb()
+  const ids = new Set(
+    (db.prepare('SELECT id FROM files').all() as { id: string }[]).map((r) => r.id),
+  )
+  for (const name of fs.readdirSync(THUMBS_DIR)) {
+    // 缓存文件名格式：<fileId>-<stamp>.webp
+    const fileId = name.split('-')[0]
+    if (ids.has(fileId)) continue
+    const full = path.join(THUMBS_DIR, name)
+    try {
+      result.freedBytes += fs.statSync(full).size
+      fs.unlinkSync(full)
+      result.thumbs++
+    } catch {
+      /* 忽略 */
+    }
+  }
+}
+
 /** 执行一轮垃圾清理，返回清理结果 */
 export function runGc(): GcResult {
-  const result: GcResult = { chunkDirs: 0, chunkRows: 0, orphanFiles: 0, freedBytes: 0, missingFiles: 0 }
+  const result: GcResult = {
+    chunkDirs: 0,
+    chunkRows: 0,
+    orphanFiles: 0,
+    trashFiles: 0,
+    thumbs: 0,
+    freedBytes: 0,
+    missingFiles: 0,
+  }
   try {
     cleanupChunks(ttlCutoff(CHUNK_TTL_HOURS), result)
     cleanupChunkRows(result)
     cleanupOrphanFiles(ttlCutoff(ORPHAN_TTL_HOURS), result)
+    cleanupTrash(result)
+    cleanupOrphanThumbs(result)
     countMissingFiles(result)
   } catch (err) {
     writeError(err as Error, 'gc: runGc')
     return result
   }
-  const touched = result.chunkDirs + result.chunkRows + result.orphanFiles
+  const touched = result.chunkDirs + result.chunkRows + result.orphanFiles + result.trashFiles + result.thumbs
   if (touched > 0) {
     console.log(
       `[WebFtp] 垃圾清理：分片目录 ${result.chunkDirs} 个、分片记录 ${result.chunkRows} 行、` +
-        `孤儿文件 ${result.orphanFiles} 个，释放 ${formatBytes(result.freedBytes)}`,
+        `孤儿文件 ${result.orphanFiles} 个、回收站过期 ${result.trashFiles} 个、缩略图缓存 ${result.thumbs} 个，` +
+        `释放 ${formatBytes(result.freedBytes)}`,
     )
   }
   if (result.missingFiles > 0) {

@@ -1,5 +1,7 @@
 import axios, { type AxiosInstance } from 'axios'
-import type { ApiResponse, User, AppFile, Share, ShareView, AdminUser, AdminStats } from './types'
+import type {
+  ApiResponse, User, AppFile, Share, ShareView, SiteInfo, AdminUser, AdminStats, SystemInfo, GcResult,
+} from './types'
 
 const TOKEN_KEY = 'webftp_token'
 
@@ -48,6 +50,10 @@ async function unwrap<T>(promise: Promise<{ data: ApiResponse<T> }>): Promise<T>
 
 /* ============ Auth ============ */
 export const authApi = {
+  /** 站点公开信息（品牌文案 + 注册开关） */
+  site: () => unwrap<SiteInfo>(client.get('/auth/site')),
+  register: (username: string, password: string) =>
+    unwrap<null>(client.post('/auth/register', { username, password })),
   login: (username: string, password: string, remember = false) =>
     unwrap<{ token: string; user: { id: string; username: string; role: string }; forceChangePassword: boolean }>(
       client.post('/auth/login', { username, password, remember })
@@ -99,6 +105,8 @@ export const filesApi = {
   // 下载 / 预览 URL
   downloadUrl: (id: string) => `/api/files/download?id=${id}&token=${getToken() || ''}`,
   previewUrl: (id: string) => `/api/files/preview?id=${id}&token=${getToken() || ''}`,
+  /** 列表/详情用的小尺寸缩略图，避免直接加载原图 */
+  thumbUrl: (id: string) => `/api/files/thumb?id=${id}&token=${getToken() || ''}`,
   downloadFolderUrl: (id: string) => `/api/files/download/folder?id=${id}&token=${getToken() || ''}`,
 }
 
@@ -116,6 +124,9 @@ export const sharesApi = {
       client.post('/shares/verify', { token, password })
     ),
   view: (token: string) => unwrap<ShareView>(client.get(`/shares/${token}`)),
+  /** 访客内联预览（图片/视频/音频/PDF），不消耗下载次数 */
+  previewUrl: (token: string, password?: string) =>
+    `/api/shares/preview/${token}${password ? `?password=${encodeURIComponent(password)}` : ''}`,
   downloadUrl: (token: string, password?: string) =>
     `/api/shares/download/${token}${password ? `?password=${encodeURIComponent(password)}` : ''}`,
 }
@@ -131,6 +142,8 @@ export const adminApi = {
   forceChange: (id: string, enable: boolean) =>
     unwrap<null>(client.post(`/admin/users/${id}/force-change`, { enable })),
   stats: () => unwrap<AdminStats>(client.get('/admin/stats')),
+  systemInfo: () => unwrap<SystemInfo>(client.get('/admin/system-info')),
+  runGc: () => unwrap<GcResult>(client.post('/admin/gc')),
   config: () => unwrap<Record<string, string>>(client.get('/admin/config')),
   updateConfig: (updates: Record<string, string>) => unwrap<null>(client.patch('/admin/config', updates)),
 }

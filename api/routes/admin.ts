@@ -1,10 +1,12 @@
 import { Router } from 'express'
 import { nanoid } from 'nanoid'
-import { getDb, STORAGE_DIR, getSuperAdminId, isSuperAdmin, ROOT_DIR, WEBPAN_ROOT, DATA_DIR, CHUNKS_DIR, LOGS_DIR, DB_PATH } from '../db.js'
+import { getDb, STORAGE_DIR, getSuperAdminId, isSuperAdmin, ROOT_DIR, WEBPAN_ROOT, DATA_DIR, CHUNKS_DIR, LOGS_DIR, THUMBS_DIR, DB_PATH } from '../db.js'
 import { ok, fail, hashPassword, formatBytes } from '../utils.js'
+import { getConfigNumber } from '../config.js'
 import { readLogTail } from '../logger.js'
 import { getStatsSummary, START_TIME } from '../stats.js'
 import { getDiskUsage } from '../space.js'
+import { runGc } from '../gc.js'
 import type { AuthRequest } from '../middleware.js'
 import { authRequired, adminOnly } from '../middleware.js'
 import fs from 'fs'
@@ -14,8 +16,14 @@ import os from 'os'
 const router = Router()
 router.use(authRequired, adminOnly)
 
-/** 新用户默认配额：1GB */
+/** 兜底配额：配置页未填写 default_quota_gb 时使用 1GB */
 const DEFAULT_QUOTA_BYTES = 1024 * 1024 * 1024
+
+/** 新用户默认配额：读取配置页的 default_quota_gb */
+function defaultQuotaBytes(): number {
+  const gb = getConfigNumber('default_quota_gb')
+  return gb > 0 ? Math.round(gb * 1024 * 1024 * 1024) : DEFAULT_QUOTA_BYTES
+}
 
 /** 用户列表 */
 router.get('/users', (req: AuthRequest, res) => {
@@ -70,7 +78,7 @@ router.post('/users', (req: AuthRequest, res) => {
   const id = nanoid()
   db.prepare(
     `INSERT INTO users (id, username, password_hash, role, quota_bytes) VALUES (?, ?, ?, ?, ?)`,
-  ).run(id, username.trim(), hashPassword(password), role || 'user', quotaBytes || DEFAULT_QUOTA_BYTES)
+  ).run(id, username.trim(), hashPassword(password), role || 'user', quotaBytes || defaultQuotaBytes())
   ok(res, { id, username: username.trim() }, '用户已创建')
 })
 
@@ -207,6 +215,19 @@ router.get('/stats', (req: AuthRequest, res) => {
     FROM files WHERE type = 'file' AND deleted = 0
     GROUP BY cat
   `).all() as Array<{ cat: string; count: number }>
+  // 回收站占用
+  const trash = db.prepare(
+    "SELECT COUNT(*) as c, COALESCE(SUM(size), 0) as t FROM files WHERE deleted = 1",
+  ).get() as { c: number; t: number }
+  // 各用户空间占用（用于占比图）
+  const superId = getSuperAdminId()
+  const usersSpace = db.prepare(`
+    SELECT id, username, role, quota_bytes as quotaBytes, used_bytes as usedBytes
+    FROM users ORDER BY used_bytes DESC, created_at ASC
+  `).all() as Array<{ id: string; username: string; role: string; quotaBytes: number; usedBytes: number }>
+  // 真实文件系统容量：统计失败时 usable 为 MAX_SAFE_INTEGER，需归一化后再展示
+  const rawDisk = getDiskUsage(STORAGE_DIR)
+  const disk = rawDisk.total > 0 ? rawDisk : { ...rawDisk, usable: 0 }
   ok(res, {
     userCount,
     fileCount,
@@ -217,6 +238,22 @@ router.get('/stats', (req: AuthRequest, res) => {
     totalQuota,
     totalQuotaHuman: formatBytes(totalQuota),
     usedPercent: totalQuota > 0 ? Math.round((totalSize / totalQuota) * 100) : 0,
+    trashCount: trash.c,
+    trashSize: trash.t,
+    trashSizeHuman: formatBytes(trash.t),
+    disk,
+    diskTotalHuman: formatBytes(disk.total),
+    diskUsedHuman: formatBytes(disk.used),
+    diskAvailableHuman: formatBytes(disk.available),
+    diskUsableHuman: formatBytes(disk.usable),
+    diskReserveHuman: formatBytes(disk.reserve),
+    usersSpace: usersSpace.map((u) => ({
+      ...u,
+      usedHuman: formatBytes(u.usedBytes),
+      quotaHuman: formatBytes(u.quotaBytes),
+      usedPercent: u.quotaBytes > 0 ? Math.min(100, Math.round((u.usedBytes / u.quotaBytes) * 100)) : 0,
+      isSuper: u.id === superId,
+    })),
     daily,
     category,
   })
@@ -256,6 +293,12 @@ router.get('/request-stats', (req: AuthRequest, res) => {
   ok(res, getStatsSummary())
 })
 
+/** 手动触发一次垃圾清理（孤儿分片目录/分片记录/孤儿文件） */
+router.post('/gc', (req: AuthRequest, res) => {
+  const result = runGc()
+  ok(res, { ...result, freedHuman: formatBytes(result.freedBytes) }, '垃圾清理完成')
+})
+
 /** 递归统计目录占用（用户文件按 <userId>/ 分子目录存放，只看顶层必然恒为 0） */
 function dirSize(dir: string): number {
   let total = 0
@@ -289,6 +332,7 @@ router.get('/system-info', (req: AuthRequest, res) => {
   // 用户文件与待合并分片都要计入，否则磁盘被写满时后台看到的仍是 0
   const storageSize = dirSize(STORAGE_DIR)
   const chunksSize = dirSize(CHUNKS_DIR)
+  const thumbsSize = dirSize(THUMBS_DIR)
   const disk = getDiskUsage(STORAGE_DIR)
   ok(res, {
     version: '1.0.0',
@@ -308,6 +352,7 @@ router.get('/system-info', (req: AuthRequest, res) => {
     storageDir: STORAGE_DIR,
     chunksDir: CHUNKS_DIR,
     logsDir: LOGS_DIR,
+    thumbsDir: THUMBS_DIR,
     dbPath: DB_PATH,
     dbSize,
     dbSizeHuman: formatBytes(dbSize),
@@ -315,11 +360,21 @@ router.get('/system-info', (req: AuthRequest, res) => {
     storageSizeHuman: formatBytes(storageSize),
     chunksSize,
     chunksSizeHuman: formatBytes(chunksSize),
+    thumbsSize,
+    thumbsSizeHuman: formatBytes(thumbsSize),
     disk,
     diskTotalHuman: formatBytes(disk.total),
     diskAvailableHuman: formatBytes(disk.available),
     diskUsableHuman: formatBytes(disk.usable),
     diskReserveHuman: formatBytes(disk.reserve),
+    // 磁盘预留比例（默认 5%），供前端展示空间保护策略
+    diskReserveRatio: disk.total > 0 ? disk.reserve / disk.total : 0.05,
+    // 垃圾清理策略
+    chunkTtlHours: Number(process.env.CHUNK_TTL_HOURS ?? 24),
+    orphanTtlHours: Number(process.env.ORPHAN_TTL_HOURS ?? 24),
+    gcIntervalMinutes: Number(process.env.GC_INTERVAL_MINUTES ?? 60),
+    // 回收站保留天数（配置页可调，0 为不自动清理）
+    trashRetentionDays: getConfigNumber('trash_retention_days'),
     pid: process.pid,
     startTime: new Date(START_TIME).toISOString(),
   })

@@ -27,13 +27,15 @@ export const DATA_DIR = path.join(WEBPAN_ROOT, 'data')
 export const STORAGE_DIR = path.join(WEBPAN_ROOT, 'files')
 export const CHUNKS_DIR = path.join(DATA_DIR, 'chunks')
 export const LOGS_DIR = path.join(DATA_DIR, 'logs')
+// 缩略图缓存目录（可由 GC 清理，删掉后会自动重新生成）
+export const THUMBS_DIR = path.join(DATA_DIR, 'thumbs')
 export const DB_PATH = path.join(DATA_DIR, 'webftp.db')
 
 let db: Database.Database | null = null
 
 /** 初始化目录结构 */
 export function ensureDirs(): void {
-  for (const dir of [WEBPAN_ROOT, DATA_DIR, STORAGE_DIR, CHUNKS_DIR, LOGS_DIR]) {
+  for (const dir of [WEBPAN_ROOT, DATA_DIR, STORAGE_DIR, CHUNKS_DIR, LOGS_DIR, THUMBS_DIR]) {
     if (fs.existsSync(dir)) continue
     try {
       fs.mkdirSync(dir, { recursive: true })

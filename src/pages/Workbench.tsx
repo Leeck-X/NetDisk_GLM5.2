@@ -8,12 +8,13 @@ import { UploadPanel } from '@/components/workbench/UploadPanel'
 import { ShareDialog } from '@/components/workbench/ShareDialog'
 import { DetailDrawer } from '@/components/workbench/DetailDrawer'
 import { RenameDialog } from '@/components/workbench/RenameDialog'
+import { MoveDialog } from '@/components/workbench/MoveDialog'
 import { ContextMenu, buildFileMenuItems, type MenuItem } from '@/components/workbench/ContextMenu'
 import { GlassPanel, GlassButton, EmptyState, LoadingSpinner } from '@/components/ui/Glass'
 import { confirm } from '@/components/ui/Confirm'
 import { toast } from '@/components/ui/Toast'
 import { filesApi } from '@/lib/api'
-import type { AppFile } from '@/lib/types'
+import { getFileCategory, type AppFile } from '@/lib/types'
 
 interface WorkbenchProps {
   view?: 'all' | 'recent' | 'category'
@@ -45,6 +46,7 @@ export default function Workbench({ view = 'all' }: WorkbenchProps) {
   const [shareFile, setShareFile] = useState<AppFile | null>(null)
   const [renameFile, setRenameFile] = useState<AppFile | null>(null)
   const [newFolderOpen, setNewFolderOpen] = useState(false)
+  const [moveFiles, setMoveFiles] = useState<AppFile[]>([])
   const [menu, setMenu] = useState<{ x: number; y: number; file: AppFile } | null>(null)
 
   const title = useMemo(() => {
@@ -191,6 +193,16 @@ export default function Workbench({ view = 'all' }: WorkbenchProps) {
     })
   }
 
+  /** 在新标签页打开原图/原视频（浏览器原生查看器） */
+  const handleOpenNewTab = (file: AppFile) => {
+    window.open(filesApi.previewUrl(file.id), '_blank', 'noopener')
+  }
+
+  /** 该文件是否支持浏览器内预览 */
+  const canPreview = (file: AppFile) =>
+    ['image', 'video', 'audio'].includes(getFileCategory(file.mimeType, file.ext)) ||
+    file.mimeType === 'application/pdf'
+
   const menuItems = (file: AppFile): MenuItem[] =>
     buildFileMenuItems(file, {
       onDownload: () => handleDownload(file),
@@ -199,6 +211,8 @@ export default function Workbench({ view = 'all' }: WorkbenchProps) {
       onDelete: () => handleDelete(file),
       onStar: () => handleStarToggle(file),
       onDetail: () => setDetailFile(file),
+      onMove: () => setMoveFiles([file]),
+      onOpenNewTab: canPreview(file) ? () => handleOpenNewTab(file) : undefined,
     })
 
   return (
@@ -230,6 +244,13 @@ export default function Workbench({ view = 'all' }: WorkbenchProps) {
           <GlassPanel variant="subtle" className="px-4 py-2.5 flex items-center justify-between animate-fade-up">
             <span className="text-sm text-slate-300">已选中 {selected.size} 项</span>
             <div className="flex gap-2">
+              <GlassButton
+                size="sm"
+                variant="glass"
+                onClick={() => setMoveFiles(files.filter((f) => selected.has(f.id)))}
+              >
+                移动到…
+              </GlassButton>
               <GlassButton size="sm" variant="danger" onClick={handleBulkDelete}>
                 移入回收站
               </GlassButton>
@@ -347,6 +368,16 @@ export default function Workbench({ view = 'all' }: WorkbenchProps) {
         onConfirm={async (name) => {
           await filesApi.mkdir(name, currentFolder)
           toast.success('文件夹已创建')
+          loadFiles()
+        }}
+      />
+
+      {/* 移动到目标目录 */}
+      <MoveDialog
+        files={moveFiles}
+        onClose={() => setMoveFiles([])}
+        onMoved={() => {
+          setSelected(new Set())
           loadFiles()
         }}
       />
