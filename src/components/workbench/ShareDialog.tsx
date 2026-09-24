@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Copy, Check, Link2, Lock, Clock, Globe } from 'lucide-react'
 import { GlassModal, GlassButton, GlassInput } from '@/components/ui/Glass'
 import { sharesApi } from '@/lib/api'
 import { toast } from '@/components/ui/Toast'
+import { useSiteStore } from '@/store/site'
 import { cn } from '@/lib/utils'
 
 interface ShareDialogProps {
@@ -12,16 +13,29 @@ interface ShareDialogProps {
   fileName?: string
 }
 
-const EXPIRE_OPTIONS = [
+const BASE_EXPIRE_OPTIONS = [
   { label: '永久', days: 0 },
   { label: '1 天', days: 1 },
   { label: '7 天', days: 7 },
   { label: '30 天', days: 30 },
 ]
 
+/** 选项按天数升序排列，便于把后台配置的默认值插入到正确位置 */
+function buildExpireOptions(defaultDays: number) {
+  const days = new Set(BASE_EXPIRE_OPTIONS.map((o) => o.days))
+  if (defaultDays > 0 && !days.has(defaultDays)) {
+    days.add(defaultDays)
+  }
+  return [...days]
+    .sort((a, b) => a - b)
+    .map((d) => ({ days: d, label: d === 0 ? '永久' : `${d} 天` }))
+}
+
 export function ShareDialog({ open, onClose, fileId, fileName }: ShareDialogProps) {
+  const defaultExpireDays = useSiteStore((s) => s.info.shareDefaultExpireDays)
+  const expireOptions = useMemo(() => buildExpireOptions(defaultExpireDays), [defaultExpireDays])
   const [password, setPassword] = useState('')
-  const [expireDays, setExpireDays] = useState(7)
+  const [expireDays, setExpireDays] = useState(defaultExpireDays)
   const [downloadLimit, setDownloadLimit] = useState('')
   const [creating, setCreating] = useState(false)
   const [result, setResult] = useState<{ token: string; expireAt: string | null; hasPassword: boolean } | null>(null)
@@ -30,12 +44,12 @@ export function ShareDialog({ open, onClose, fileId, fileName }: ShareDialogProp
   useEffect(() => {
     if (open) {
       setPassword('')
-      setExpireDays(7)
+      setExpireDays(defaultExpireDays)
       setDownloadLimit('')
       setResult(null)
       setCopied(false)
     }
-  }, [open])
+  }, [open, defaultExpireDays])
 
   const onCreate = async () => {
     if (!fileId) return
@@ -83,7 +97,7 @@ export function ShareDialog({ open, onClose, fileId, fileName }: ShareDialogProp
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-2 ml-1">有效期</label>
             <div className="grid grid-cols-4 gap-2">
-              {EXPIRE_OPTIONS.map((opt) => (
+              {expireOptions.map((opt) => (
                 <button
                   key={opt.days}
                   onClick={() => setExpireDays(opt.days)}

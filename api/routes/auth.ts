@@ -16,6 +16,7 @@ router.get('/site', (req, res) => {
     siteName: getConfig('site_name'),
     siteDescription: getConfig('site_description'),
     allowRegister: getConfigBool('allow_register'),
+    shareDefaultExpireDays: getConfigNumber('share_default_expire_days'),
   })
 })
 

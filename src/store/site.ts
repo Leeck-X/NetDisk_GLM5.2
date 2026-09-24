@@ -7,6 +7,7 @@ const FALLBACK: SiteInfo = {
   siteName: 'WebFtp',
   siteDescription: '自托管网盘系统 · 数据尽在掌握',
   allowRegister: false,
+  shareDefaultExpireDays: 7,
 }
 
 interface SiteState {

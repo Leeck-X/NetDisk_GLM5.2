@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { nanoid } from 'nanoid'
 import { getDb, STORAGE_DIR, getSuperAdminId, isSuperAdmin, ROOT_DIR, WEBPAN_ROOT, DATA_DIR, CHUNKS_DIR, LOGS_DIR, THUMBS_DIR, DB_PATH } from '../db.js'
 import { ok, fail, hashPassword, formatBytes } from '../utils.js'
-import { getConfigNumber } from '../config.js'
+import { CONFIG_DEFAULTS, getConfigNumber } from '../config.js'
 import { readLogTail } from '../logger.js'
 import { getStatsSummary, START_TIME } from '../stats.js'
 import { getDiskUsage } from '../space.js'
@@ -263,11 +263,14 @@ router.get('/stats', (req: AuthRequest, res) => {
 router.get('/config', (req: AuthRequest, res) => {
   const db = getDb()
   const rows = db.prepare('SELECT key, value FROM config').all() as Array<{ key: string; value: string }>
-  const config: Record<string, string> = {}
+  // 先铺默认值，再叠加库里已保存的值：否则全新部署（config 表只有 super_admin_id）
+  // 配置页会整片空白，看不出各项的当前生效值。
+  const config: Record<string, string> = { ...CONFIG_DEFAULTS }
   for (const r of rows) {
-    if (!r.key.startsWith('force_change_password:')) {
-      config[r.key] = r.value
-    }
+    if (r.key.startsWith('force_change_password:')) continue
+    // super_admin_id 属内部状态，不进入配置表单，避免被随表单回写
+    if (r.key === 'super_admin_id') continue
+    config[r.key] = r.value
   }
   ok(res, config)
 })

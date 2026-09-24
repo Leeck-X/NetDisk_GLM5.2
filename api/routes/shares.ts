@@ -7,6 +7,7 @@ import { getDb } from '../db.js'
 import { ok, fail, hashPassword, comparePassword, genToken, getFileCategory } from '../utils.js'
 import type { AuthRequest } from '../middleware.js'
 import { authRequired } from '../middleware.js'
+import { getConfigNumber } from '../config.js'
 import type { AppFile } from './files.js'
 
 const router = Router()
@@ -49,8 +50,12 @@ router.post('/', authRequired, (req: AuthRequest, res) => {
   const id = nanoid()
   const token = genToken(16)
   const passwordHash = password ? hashPassword(password) : null
-  const expireAt = expireDays && expireDays > 0
-    ? new Date(Date.now() + expireDays * 24 * 3600 * 1000).toISOString()
+  // 未显式指定有效期时，回退到后台配置的「分享默认有效期」（0 表示永久有效）
+  const effectiveExpireDays = expireDays === undefined || expireDays === null
+    ? getConfigNumber('share_default_expire_days')
+    : expireDays
+  const expireAt = effectiveExpireDays && effectiveExpireDays > 0
+    ? new Date(Date.now() + effectiveExpireDays * 24 * 3600 * 1000).toISOString()
     : null
   db.prepare(
     `INSERT INTO shares (id, token, file_id, user_id, password_hash, expire_at, download_limit) VALUES (?, ?, ?, ?, ?, ?, ?)`,

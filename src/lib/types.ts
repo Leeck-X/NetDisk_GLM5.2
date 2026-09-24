@@ -70,6 +70,8 @@ export interface SiteInfo {
   siteName: string
   siteDescription: string
   allowRegister: boolean
+  /** 创建分享时的默认有效期（天），0 表示永久 */
+  shareDefaultExpireDays: number
 }
 
 export interface AdminUser {
