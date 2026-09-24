@@ -9,6 +9,9 @@
 - 文件操作：重命名、移动、复制、收藏、回收站恢复/彻底删除
 - 文件分享：链接分享、提取码、有效期、下载次数限制
 - 管理后台：用户管理、系统统计、存储配置
+- 磁盘保护：按磁盘总量动态预留空间，空间不足时拒绝写入（HTTP 507）
+- 垃圾回收：自动清理超时未完成的分片、孤儿分片记录与无主文件
+- 配额与隔离：新用户默认 1GB 配额，用户文件按 `<userId>/` 分目录存放
 - 响应式：桌面三栏、平板两栏、手机单栏底部 Tab
 
 ## 技术栈
@@ -21,22 +24,35 @@
 
 ## 目录结构
 
+源码仓库：
+
 ```
 WebFtp/
-├── api/              后端源码（Express 路由 + 服务 + 统计/日志）
+├── api/              后端源码（Express 路由 + 服务 + 空间检测/垃圾回收）
 ├── src/              前端源码（React 页面 + 组件）
 ├── service/          Windows 服务管理脚本（node-windows）
 │   └── manage.mjs    安装/卸载/启停/状态
 ├── WebFtpManager/    C# WPF 管理面板源码
-├── data/             SQLite 数据库与分片临时目录（运行时生成）
-├── storage/          用户文件存储根目录（运行时生成）
 ├── dist/             前端构建产物（由 server 静态托管）
-├── logs/             运行日志（access/error/stats）
 ├── publish/          WebFtpManager.exe 发布产物
-├── ecosystem.config.cjs   PM2 配置（可选，已不推荐用于 Windows Server）
+├── ecosystem.config.cjs   PM2 配置（Linux 部署）
 ├── Install-WebFtp.ps1    Windows Server 一键部署脚本
 └── .env              环境变量（从 .env.example 复制创建）
 ```
+
+运行时数据（由 `WEBPAN_ROOT` 决定，默认取程序目录的上一级）：
+
+```
+${WEBPAN_ROOT}/
+├── app/    程序代码（部署时放在此，如 /opt/WebPan/app）
+├── data/   数据库、上传分片、运行日志（首次启动自动创建）
+│   ├── webftp.db
+│   ├── chunks/           未完成上传的分片
+│   └── logs/             access / error / stats
+└── files/  用户文件（按 <userId>/ 分目录隔离，首次启动自动创建）
+```
+
+> 一个主目录下只放 `app` / `data` / `files` 三个子目录，程序、数据、用户文件互不混杂，便于整体迁移与备份。
 
 ## 快速开始
 
@@ -169,14 +185,39 @@ npm run init:admin
 
 ## 配置
 
-编辑 `.env`：
+编辑 `.env`（完整示例见 `.env.example`）：
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `PORT` | 3000 | 服务端口 |
+| `HOST` | 0.0.0.0 | 监听地址 |
 | `JWT_SECRET` | （需修改） | JWT 签名密钥 |
+| `WEBPAN_ROOT` | 程序目录的上一级 | `app`/`data`/`files` 的父目录，留空则取程序目录的上一级 |
+| `DISK_RESERVE_RATIO` | 0.05 | 磁盘预留比例，始终保留磁盘总量的该比例不参与写入（上限 0.5） |
+| `CHUNK_TTL_HOURS` | 24 | 未完成上传的分片保留时长（小时），0 表示不清理 |
+| `ORPHAN_TTL_HOURS` | 24 | 无主文件保留时长（小时），0 表示不清理 |
+| `GC_INTERVAL_MINUTES` | 60 | 垃圾回收执行间隔（分钟） |
+| `UPLOAD_MAX_SIZE_MB` | 2048 | 单文件上传上限（MB），后台「系统配置」的 `upload_max_size` 优先生效 |
 
-存储与数据目录默认在项目根目录下 `storage/` 与 `data/webftp.db`。
+数据库与用户文件分别位于 `${WEBPAN_ROOT}/data` 与 `${WEBPAN_ROOT}/files`。
+
+## 磁盘空间保护与垃圾回收
+
+**空间保护**：每次上传（分片预检与整体上传）前都会检查目标磁盘的可用空间。
+
+- 预留空间 = 磁盘总量 × `DISK_RESERVE_RATIO`（默认 5%），该部分始终不参与写入
+- 实际可写 = 非 root 可用空间 − 预留空间
+- 可用空间不足时直接拒绝写入并返回 `507`，避免磁盘写满导致数据库与系统异常
+
+**垃圾回收**：服务启动 10 秒后执行首轮，之后每 `GC_INTERVAL_MINUTES`（默认 60 分钟）执行一次，清理三类垃圾：
+
+| 类型 | 位置 | 判定 |
+|------|------|------|
+| 孤儿分片目录 | `data/chunks/` | 超过 `CHUNK_TTL_HOURS` 仍未完成上传的残留 |
+| 孤儿分片记录 | `file_chunks` 表 | 已无对应分片目录的行 |
+| 无主文件 | `files/` | 磁盘存在但数据库无记录，且超过 `ORPHAN_TTL_HOURS` |
+
+进行中的上传会被跳过，不会误删；同时会统计「数据库有记录但磁盘文件已丢失」的数量并输出告警日志（只上报，不自动删记录）。
 
 ## 反向代理（可选 HTTPS）
 
@@ -203,7 +244,7 @@ server {
 
 ## 备份
 
-定期备份以下目录：
+定期备份以下内容（均位于 `${WEBPAN_ROOT}`）：
 
 - `data/webftp.db`（数据库）
-- `storage/`（用户文件）
+- `files/`（用户文件）
