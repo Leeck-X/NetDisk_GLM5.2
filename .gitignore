@@ -42,3 +42,6 @@ obj/
 publish/
 Release/
 Debug/
+
+# 部署/运维临时脚本（仅本地使用，不入库）
+_deploy_tmp/
