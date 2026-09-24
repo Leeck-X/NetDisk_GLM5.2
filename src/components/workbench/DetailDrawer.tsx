@@ -17,10 +17,12 @@ interface DetailDrawerProps {
 
 export function DetailDrawer({ file, onClose, onShare, onRename, onDelete, onStarToggle }: DetailDrawerProps) {
   if (!file) return null
-  const isImage = getFileCategory(file.mimeType, file.ext) === 'image'
-  const isPreviewable =
-    ['image', 'video', 'audio'].includes(getFileCategory(file.mimeType, file.ext)) ||
-    file.mimeType === 'application/pdf'
+  const category = getFileCategory(file.mimeType, file.ext)
+  const isImage = category === 'image'
+  const isVideo = category === 'video'
+  const isAudio = category === 'audio'
+  const isPdf = file.mimeType === 'application/pdf'
+  const isPreviewable = isImage || isVideo || isAudio || isPdf
 
   return (
     <>
@@ -45,9 +47,9 @@ export function DetailDrawer({ file, onClose, onShare, onRename, onDelete, onSta
           </div>
 
           <div className="flex-1 overflow-y-auto scroll-glass p-5 space-y-5">
-            {/* 预览区：用缩略图保证秒开，看原图走右上角「新标签页打开」 */}
-            <div className="aspect-video rounded-2xl overflow-hidden glass-subtle flex items-center justify-center">
-              {isImage ? (
+            {/* 预览区：图片用缩略图秒开，视频/音频/PDF 内联播放，看原图走右上角「新标签页打开」 */}
+            {isImage && (
+              <div className="aspect-video rounded-2xl overflow-hidden glass-subtle flex items-center justify-center">
                 <img
                   src={filesApi.thumbUrl(file.id)}
                   alt={file.name}
@@ -56,10 +58,29 @@ export function DetailDrawer({ file, onClose, onShare, onRename, onDelete, onSta
                     ;(e.target as HTMLImageElement).style.display = 'none'
                   }}
                 />
-              ) : (
+              </div>
+            )}
+            {isVideo && (
+              <video src={filesApi.previewUrl(file.id)} controls preload="metadata" className="w-full rounded-2xl bg-black" />
+            )}
+            {isAudio && (
+              <div className="rounded-2xl glass-subtle p-4 flex flex-col items-center gap-3">
+                <FileIcon file={file} size={48} />
+                <audio src={filesApi.previewUrl(file.id)} controls preload="metadata" className="w-full" />
+              </div>
+            )}
+            {isPdf && (
+              <iframe
+                src={filesApi.previewUrl(file.id)}
+                title={file.name}
+                className="w-full h-72 rounded-2xl bg-white"
+              />
+            )}
+            {!isImage && !isVideo && !isAudio && !isPdf && (
+              <div className="aspect-video rounded-2xl overflow-hidden glass-subtle flex items-center justify-center">
                 <FileIcon file={file} size={72} />
-              )}
-            </div>
+              </div>
+            )}
 
             {/* 名称 */}
             <div>
