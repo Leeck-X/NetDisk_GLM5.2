@@ -22,7 +22,7 @@ interface ConfirmState {
   setLoading: (v: boolean) => void
 }
 
-const useConfirmStore = create<ConfirmState>((set, get) => ({
+const useConfirmStore = create<ConfirmState>((set) => ({
   open: false,
   options: null,
   loading: false,

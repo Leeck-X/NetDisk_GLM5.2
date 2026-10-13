@@ -150,7 +150,7 @@ export default function Trash() {
                           },
                         })
                       }}
-                      onMenu={(file, x, y) => {
+                      onMenu={(file) => {
                         confirm({
                           title: '彻底删除',
                           message: `彻底删除「${file.name}」？此操作不可恢复。`,

@@ -18,6 +18,22 @@ const DB_FILE_FIELDS = `
   created_at as createdAt, updated_at as updatedAt, deleted, deleted_at as deletedAt, starred
 `
 
+/** 分享列表行（含关联文件名/类型/大小，password_hash 别名 hasPassword 用于转布尔） */
+interface ShareListItem {
+  id: string
+  token: string
+  fileId: string
+  userId: string
+  hasPassword: string | null
+  expireAt: number | null
+  downloadLimit: number | null
+  downloads: number
+  createdAt: string
+  fileName: string
+  fileType: string
+  fileSize: number
+}
+
 /** 我的分享列表 */
 router.get('/', authRequired, (req: AuthRequest, res) => {
   const db = getDb()
@@ -29,7 +45,7 @@ router.get('/', authRequired, (req: AuthRequest, res) => {
     WHERE s.user_id = ? ORDER BY s.created_at DESC
   `).all(req.user!.id)
   // hasPassword 转布尔
-  const result = items.map((it: any) => ({ ...it, hasPassword: !!it.hasPassword }))
+  const result = (items as ShareListItem[]).map((it) => ({ ...it, hasPassword: !!it.hasPassword }))
   ok(res, result)
 })
 

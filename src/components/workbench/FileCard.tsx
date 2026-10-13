@@ -1,6 +1,5 @@
 import { useState, type MouseEvent } from 'react'
 import { Check, MoreVertical, Star, Share2, Download, Trash2, Pencil, FolderDown } from 'lucide-react'
-import { GlassPanel } from '@/components/ui/Glass'
 import { FileIcon } from '@/components/FileIcon'
 import { filesApi } from '@/lib/api'
 import { formatBytes, formatDate, getFileCategory, type AppFile } from '@/lib/types'

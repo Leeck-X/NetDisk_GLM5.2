@@ -28,7 +28,6 @@ export function UploadPanel({ open, onClose, parentId, onUploaded }: UploadPanel
   const [tasks, setTasks] = useState<UploadTask[]>([])
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
-  const uploadingCount = tasks.filter((t) => t.status === 'uploading' || t.status === 'pending' || t.status === 'merging').length
 
   const addFiles = useCallback(
     (fileList: FileList | File[]) => {

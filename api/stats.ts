@@ -28,7 +28,6 @@ const minuteBuckets: Bucket[] = []
 const hourBuckets: Bucket[] = []
 
 let lastFlushMinute = 0
-let lastFlushHour = 0
 
 function currentMinuteTs(): number {
   return Math.floor(Date.now() / MINUTE_MS) * MINUTE_MS

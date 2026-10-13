@@ -55,8 +55,6 @@ export default function Workbench({ view = 'all' }: WorkbenchProps) {
     return '全部文件'
   }, [view, params.type])
 
-  const isBrowsing = view === 'all'
-
   const loadFiles = useCallback(async () => {
     setLoading(true)
     try {

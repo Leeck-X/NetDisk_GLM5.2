@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react'
 import { cn } from '@/lib/utils'

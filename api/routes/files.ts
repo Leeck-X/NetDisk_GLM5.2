@@ -465,7 +465,7 @@ interface InitUploadBody {
 
 /** 初始化分片上传 */
 router.post('/upload/init', (req: AuthRequest, res) => {
-  const { name, size, parentId, chunkSize, totalChunks, mimeType, hash } = req.body as InitUploadBody
+  const { name, size, chunkSize, totalChunks, hash } = req.body as InitUploadBody
   if (!name || !size || !totalChunks || !chunkSize) {
     fail(res, '参数不完整')
     return
