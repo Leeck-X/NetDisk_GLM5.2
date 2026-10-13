@@ -70,8 +70,8 @@ npm install
 
 ```bash
 npm run dev
-# 前端 http://localhost:5173（代理 /api 到 3001）
-# 后端 http://localhost:3001
+# 前端 http://localhost:5173（代理 /api 到 3000）
+# 后端 http://localhost:3000
 ```
 
 ### 3. 生产构建与启动
@@ -302,21 +302,35 @@ npm run init:admin
 
 可使用 IIS / Nginx 将 80/443 转发到 3000。示例 Nginx：
 
+> 若对外使用**非标准端口**（如 `8443`），务必按下例用 `$server_port` 保留端口，
+> 否则跳转会丢掉端口、落到同域名的 443（可能是其它站点）。同时用 `$http_host`
+> （含端口）而非 `$host`（不含端口）转发 `Host` 头，避免端口在反代中丢失。
+
 ```nginx
 server {
-    listen 443 ssl;
+    # 非标准端口示例：8443。若用标准 443，把下面的 8443 全部换成 443 即可。
+    listen 8443 ssl;
+    listen [::]:8443 ssl;
     server_name your-domain;
+
     ssl_certificate     /path/to/cert.pem;
     ssl_certificate_key /path/to/key.pem;
     client_max_body_size 2g;
 
+    # 直接以 http:// 访问本 HTTPS 端口时，nginx 会返回 400
+    # "The plain HTTP request was sent to HTTPS port"（内部错误码 497）。
+    # 这里改写为 301 并保留端口，避免跳到 443 丢端口。
+    error_page 497 =301 https://$host:$server_port$request_uri;
+
     location / {
         proxy_pass http://127.0.0.1:3000;
-        proxy_set_header Host $host;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
     }
 }
 ```

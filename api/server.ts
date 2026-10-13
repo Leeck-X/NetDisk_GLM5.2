@@ -6,8 +6,10 @@ import { runGc } from './gc.js';
 
 /**
  * start server with port
+ * 默认 3000：与 .env.example / install-webftp.sh / ecosystem.config.cjs 保持一致，
+ * 避免存在 .env（PORT=3000）时开发代理仍指向 3001 而连不上后端。
  */
-const PORT = Number(process.env.PORT || 3001);
+const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 
 const server = app.listen(PORT, HOST, () => {

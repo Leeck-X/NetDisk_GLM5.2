@@ -26,15 +26,23 @@ client.interceptors.request.use((config) => {
   return config
 })
 
-// 响应拦截：统一解包 + 401 处理
+// 响应拦截：统一解包 + 401 处理 + 透出后端错误信息
 client.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const status: number | undefined = error.response?.status
+    if (status === 401) {
       setToken(null)
       if (!window.location.pathname.startsWith('/s/') && !window.location.pathname.startsWith('/login')) {
         window.location.href = '/login'
       }
+    }
+    // 后端业务错误统一以 HTTP 400 返回（如 { code: 1, message: '账号或密码错误' }）。
+    // axios 遇到非 2xx 只会抛出 "Request failed with status code 400"，
+    // 这里把响应体里的 message 透出，登录页等界面才能显示真实提示。
+    const data = error.response?.data as { message?: unknown } | undefined
+    if (data && typeof data === 'object' && typeof data.message === 'string' && data.message) {
+      return Promise.reject(new Error(data.message))
     }
     return Promise.reject(error)
   }
