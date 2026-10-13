@@ -29,27 +29,13 @@ export function UploadPanel({ open, onClose, parentId, onUploaded }: UploadPanel
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const addFiles = useCallback(
-    (fileList: FileList | File[]) => {
-      const files = Array.from(fileList).filter((f) => !f.name.startsWith('.'))
-      if (files.length === 0) return
-      const newTasks: UploadTask[] = files.map((f) => ({
-        id: Math.random().toString(36).slice(2),
-        file: f,
-        progress: 0,
-        status: 'pending',
-      }))
-      setTasks((prev) => [...prev, ...newTasks])
-      // 启动上传队列
-      for (const t of newTasks) startUpload(t)
-    },
-    [parentId]
+  const updateTask = useCallback(
+    (id: string, patch: Partial<UploadTask>) =>
+      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t))),
+    []
   )
 
-  const updateTask = (id: string, patch: Partial<UploadTask>) =>
-    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)))
-
-  const startUpload = async (task: UploadTask) => {
+  const startUpload = useCallback(async (task: UploadTask) => {
     updateTask(task.id, { status: 'uploading', progress: 0 })
     try {
       const totalChunks = Math.ceil(task.file.size / CHUNK_SIZE)
@@ -109,7 +95,24 @@ export function UploadPanel({ open, onClose, parentId, onUploaded }: UploadPanel
       updateTask(task.id, { status: 'error', error: message })
       toast.error(`${task.file.name} 上传失败：${message}`)
     }
-  }
+  }, [updateTask, parentId, onUploaded])
+
+  const addFiles = useCallback(
+    (fileList: FileList | File[]) => {
+      const files = Array.from(fileList).filter((f) => !f.name.startsWith('.'))
+      if (files.length === 0) return
+      const newTasks: UploadTask[] = files.map((f) => ({
+        id: Math.random().toString(36).slice(2),
+        file: f,
+        progress: 0,
+        status: 'pending',
+      }))
+      setTasks((prev) => [...prev, ...newTasks])
+      // 启动上传队列
+      for (const t of newTasks) startUpload(t)
+    },
+    [startUpload]
+  )
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault()
